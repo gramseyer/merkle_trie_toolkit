@@ -22,12 +22,16 @@ PKG_CHECK_MODULES([tbb], [tbb])
 
 export CXXFLAGS
 
-AX_PKGCONFIG_SUBDIR(xdrpp)
-AC_MSG_CHECKING(for xdrc)
-AS_IF([test -n "$XDRC"],,
-       [test -n "$xdrpp_INTERNAL" -a x"$cross_compiling" != xyes],
-       [XDRC='$(top_builddir)/xdrpp/xdrc/xdrc$(EXEEXT)'],
-       [AC_PATH_PROG(XDRC, [xdrc])])
+if test -z $XDRC; then
+   AX_PKGCONFIG_SUBDIR(xdrpp)
+   AC_MSG_CHECKING(for xdrc)
+   AS_IF([test -n "$XDRC"],,
+          [test -n "$xdrpp_INTERNAL" -a x"$cross_compiling" != xyes],
+          [XDRC='$(top_builddir)/xdrpp/xdrc/xdrc$(EXEEXT)'],
+          [AC_PATH_PROG(XDRC, [xdrc])])
+
+fi
+
 if test -z "$XDRC"; then
    AC_MSG_ERROR(Cannot find xdrc)
 fi
