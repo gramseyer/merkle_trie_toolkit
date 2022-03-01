@@ -1,11 +1,18 @@
-
 ACLOCAL_AMFLAGS = -I m4
 
-SUBDIRS = $(PKGCONFIG_SUBDIRS)
+SUBDIRS = $(PKGCONFIG_SUBDIRS) .
 
-nodist_pkginclude_HEADERS = include/trie/build_endian.h
+AM_CPPFLAGS = $(xdrpp_CFLAGS)
+LDADD = $(xdrpp_LDFLAGS)
 
-BUILT_SOURCES = include/trie/config.h
+SUFFIXES = .x.h
+
+#building x files
+$(XH_FILES) : $(XDRC)
+
+#nodist_pkginclude_HEADERS = include/trie/build_endian.h
+
+#BUILT_SOURCES = include/trie/config.h $(XH_FILES)
 
 # If we use AC_CONFIG_HEADERS([xdrpp/config.h]) in configure.ac, then
 # autoconf adds -Ixdrpp, which causes errors for files like endian.h
@@ -15,23 +22,22 @@ BUILT_SOURCES = include/trie/config.h
 include/trie/config.h: $(builddir)/config.h
 	cp $(builddir)/config.h include/trie/config.h
 
-pkginclude_HEADERS = include/trie/build_endian.h
+#pkginclude_HEADERS = include/trie/build_endian.h include/trie/xdr/types.h
 
 #pkgconfigdir = $(libdir)/pkgconfig
 #pkgconfig_DATA = xdrpp.pc
 
 CLEANFILES = *~ */*~ */*/*~ .gitignore~
-DISTCLEANFILES = include/trie/config.h
+#DISTCLEANFILES = include/trie/config.h
 
-distclean-local:
-	rm -rf autom4te.cache
+#distclean-local:
+#	rm -rf autom4te.cache
 
-maintainer-clean-local:
-	cd $(srcdir) && rm -rf `sed -ne 's!^/!!p' .gitignore`
+#maintainer-clean-local:
+#	cd $(srcdir) && rm -rf `sed -ne 's!^/!!p' .gitignore`
 
-EXTRA_DIST = .gitignore autogen.sh \
-	include/trie/build_endian.h.in
-
+#EXTRA_DIST = .gitignore autogen.sh \
+#	include/trie/build_endian.h.in
 
 TEST_SRCS = \
 	tests/test_prefix.h \
@@ -39,13 +45,24 @@ TEST_SRCS = \
 	tests/test_merkle_trie_metadata.h \
 	tests/test_recycling_trie.h
 
-test_runner.cc : $(TEST_SRCS)
+.x.h:
+	echo "wtf" && \
+	echo $< && \
+	$(XDRC)  -hh -o $@ $<
+
+X_FILES = include/trie/xdr/types.x
+
+#no idea but including this shorthand somehow screws up this configure script
+#XH_FILES = $(X_FILES:.x=.h)
+
+test_runner.cc : $(TEST_SRCS) $(X_FILES:.x=.h)
+	echo $(XH_FILES) && \
 	cxxtestgen --error-printer -o test_runner.cc $(TEST_SRCS)
 
-test_runner.o : CXXFLAGS += -I./include $(libsodium_CFLAGS) $(tbb_CFLAGS)
+test_runner.o : CXXFLAGS += -I./include $(libsodium_CFLAGS) $(tbb_CFLAGS) $(xdrpp_CFLAGS)
 
 bin_PROGRAMS = test
 
 test_SOURCES = test_runner.cc
 
-test_LDFLAGS = $(libsodium_LDFLAGS) $(tbb_LDFLAGS)
+test_LDFLAGS = $(libsodium_LDFLAGS) $(tbb_LDFLAGS) $(xdrpp_LDFLAGS)
