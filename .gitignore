@@ -19,6 +19,11 @@ doc/
 depcomp
 *~
 README
+compile
+ar-lib
+ylwrap
+test_runner.cc
+test-driver
 
 #mac
 .DS_STORE

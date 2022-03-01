@@ -1,0 +1,3 @@
+[submodule "xdrpp"]
+	path = xdrpp
+	url = git@github.com:xdrpp/xdrpp.git

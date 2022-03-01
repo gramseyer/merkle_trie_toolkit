@@ -1,4 +1,7 @@
 
+ACLOCAL_AMFLAGS = -I m4
+
+SUBDIRS = $(PKGCONFIG_SUBDIRS)
 
 nodist_pkginclude_HEADERS = include/trie/build_endian.h
 
@@ -29,4 +32,20 @@ maintainer-clean-local:
 EXTRA_DIST = .gitignore autogen.sh \
 	include/trie/build_endian.h.in
 
-ACLOCAL_AMFLAGS = -I m4
+
+TEST_SRCS = \
+	tests/test_prefix.h \
+	tests/test_merkle_trie.h \
+	tests/test_merkle_trie_metadata.h \
+	tests/test_recycling_trie.h
+
+test_runner.cc : $(TEST_SRCS)
+	cxxtestgen --error-printer -o test_runner.cc $(TEST_SRCS)
+
+test_runner.o : CXXFLAGS += -I./include $(libsodium_CFLAGS) $(tbb_CFLAGS)
+
+bin_PROGRAMS = test
+
+test_SOURCES = test_runner.cc
+
+test_LDFLAGS = $(libsodium_LDFLAGS) $(tbb_LDFLAGS)
