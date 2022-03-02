@@ -9,6 +9,7 @@ dnl which on my machine is -I/usr/local/include
 AC_PROG_CXX
 AC_LANG(C++)
 AX_APPEND_COMPILE_FLAGS([-pthread])
+AX_APPEND_COMPILE_FLAGS([-std=gnu++2a])
 AS_IF([test -z "${WFLAGS+set}"], AX_APPEND_COMPILE_FLAGS([-Wall], WFLAGS))
 
 AC_C_BIGENDIAN
@@ -21,6 +22,7 @@ PKG_CHECK_MODULES([libsodium], [libsodium])
 PKG_CHECK_MODULES([tbb], [tbb])
 
 export CXXFLAGS
+export CXX
 
 if test -z $XDRC; then
    AX_PKGCONFIG_SUBDIR(xdrpp)
