@@ -73,7 +73,7 @@ public:
 
 			trie_t trie;
 
-			uint64_t experiment_sz = 10'000'000;
+			uint64_t experiment_sz = 5'000'000;
 
 			auto ts = utils::init_time_measurement();
 
