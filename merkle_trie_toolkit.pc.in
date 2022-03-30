@@ -4,7 +4,7 @@ libdir=@libdir@
 includedir=@includedir@
 bindir=@bindir@
 
-Name: merkle-trie-shenanigans
+Name: merkle_trie_toolkit
 Description: Merkle tries & various utils
 Version: @PACKAGE_VERSION@
 Libs:
