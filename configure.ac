@@ -41,5 +41,5 @@ AC_MSG_RESULT($XDRC)
 AC_SUBST(XDRC)
 
 AC_CONFIG_HEADERS([config.h])
-AC_CONFIG_FILES([Makefile include/trie/build_endian.h])
+AC_CONFIG_FILES([Makefile merkle-trie-shenanigans.pc include/trie/build_endian.h])
 AC_OUTPUT

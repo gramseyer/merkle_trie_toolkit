@@ -7,9 +7,6 @@ LDADD = $(xdrpp_LDFLAGS)
 
 SUFFIXES = .x.h
 
-#building x files
-$(XH_FILES) : $(XDRC)
-
 #nodist_pkginclude_HEADERS = include/trie/build_endian.h
 
 #BUILT_SOURCES = include/trie/config.h $(XH_FILES)
@@ -53,6 +50,8 @@ TEST_SRCS = \
 X_FILES = include/trie/xdr/types.x
 
 TEST_X_FILES = tests/xdr/test_types.x
+
+$(top_builddir)/include/trie/xdr/types.h : $(XDRC)
 
 #no idea but including this shorthand somehow screws up this configure script
 #XH_FILES = $(X_FILES:.x=.h)

@@ -25,6 +25,7 @@ ylwrap
 test_runner.cc
 test-driver
 test
+merkle-trie-shenanigans.pc
 
 #mac
 .DS_STORE
