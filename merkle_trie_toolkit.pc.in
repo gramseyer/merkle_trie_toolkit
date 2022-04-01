@@ -8,5 +8,5 @@ Name: merkle_trie_toolkit
 Description: Merkle tries & various utils
 Version: @PACKAGE_VERSION@
 Libs:
-Cflags: -I${includedir}
+Cflags: -I${includedir}/include
 

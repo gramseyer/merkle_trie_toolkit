@@ -1,4 +1,4 @@
-AC_INIT([merkle-trie-shenanigans],[0])
+AC_INIT([merkle_trie_toolkit],[0])
 AM_INIT_AUTOMAKE([subdir-objects])
 AC_CONFIG_SRCDIR([configure.ac])
 AC_CONFIG_MACRO_DIR([m4])
