@@ -2,5 +2,5 @@ Name: merkle_trie_toolkit
 Description: Merkle Trie Utils
 Version: @PACKAGE_VERSION@
 Libs: 
-Cflags: -I@abs_top_srcdir@ -I${pcfiledir}
+Cflags: -I${pcfiledir}/include
 
