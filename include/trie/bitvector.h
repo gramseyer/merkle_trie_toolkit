@@ -2,6 +2,8 @@
 
 #include "trie/build_endian.h"
 
+#include "utils/serialize_endian.h"
+
 namespace trie {
 /*!
 
@@ -43,10 +45,10 @@ public:
 		return 2;
 	}
 	void write_to(unsigned char* ptr) {
-		write_unsigned_big_endian(ptr, bv);
+		utils::write_unsigned_big_endian(ptr, bv);
 	}
 	void write(std::vector<unsigned char>& vec) {
-		append_unsigned_big_endian(vec, bv);
+		utils::append_unsigned_big_endian(vec, bv);
 	}
 
 	bool contains(uint8_t loc) const {

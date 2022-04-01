@@ -9,7 +9,7 @@
 #include "trie/utils.h"
 #include "trie/xdr/types.h"
 
-#include "utils/serialize_big_endian.h"
+#include "utils/serialize_endian.h"
 #include "utils/time.h"
 
 #include <sodium.h>
@@ -55,7 +55,7 @@ public:
 		TS_ASSERT_EQUALS(h1, h2);
 	}
 
-	void test_batch_merge() {
+	void deactivated_test_batch_merge() {
 		TEST_START();
 		using trie_t = AccountTrie<EmptyValue>;
 

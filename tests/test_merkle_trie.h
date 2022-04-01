@@ -7,7 +7,7 @@
 #include "trie/debug_macros.h"
 #include "trie/merkle_trie.h"
 
-#include "utils/serialize_big_endian.h"
+#include "utils/serialize_endian.h"
 
 #include "tests/offer_metadata.h"
 #include "tests/xdr/test_types.h"
@@ -52,12 +52,12 @@ public:
 		mt trie;
 		mt :: prefix_t key_buf;
 		for (unsigned char i = 0; i < 100; i += 10) {
-			write_unsigned_big_endian(key_buf, i);
+			utils::write_unsigned_big_endian(key_buf, i);
 			trie.insert(key_buf);
 		}
 		TS_ASSERT_EQUALS(10, trie.uncached_size());
 		for (unsigned char i = 0; i < 100; i += 10) {
-			write_unsigned_big_endian(key_buf, i);
+			utils::write_unsigned_big_endian(key_buf, i);
 			trie.insert(key_buf);
 		}
 		TS_ASSERT_EQUALS(10, trie.uncached_size());
@@ -73,7 +73,7 @@ public:
 		Hash hash1, hash2;
 
 		for (uint16_t i = 0; i < 1000; i+= 20) {
-			write_unsigned_big_endian(key_buf, i);
+			utils::write_unsigned_big_endian(key_buf, i);
 			trie.insert(key_buf);
 		}
 		TS_ASSERT_EQUALS(50, trie.uncached_size());
@@ -81,7 +81,7 @@ public:
 		trie.hash(hash1);
 		
 		for (uint16_t i = 0; i < 1000; i+= 20) {
-			write_unsigned_big_endian(key_buf, i);
+			utils::write_unsigned_big_endian(key_buf, i);
 			trie.insert(key_buf);
 		}
 		TS_ASSERT_EQUALS(50, trie.uncached_size());
@@ -90,7 +90,7 @@ public:
 		TS_ASSERT_EQUALS(hash1, hash2);
 
 		uint16_t k = 125;
-		write_unsigned_big_endian(key_buf, k);
+		utils::write_unsigned_big_endian(key_buf, k);
 		trie.insert(key_buf);
 		trie.hash(hash2);
 		TS_ASSERT_DIFFERS(hash1, hash2);
@@ -106,7 +106,7 @@ public:
 		Hash hash1, hash2;
 
 		for (uint16_t i = 0; i < 100; i+= 20) {
-			write_unsigned_big_endian(key_buf, i);
+			utils::write_unsigned_big_endian(key_buf, i);
 			trie.insert(key_buf);
 			trie2.insert(key_buf);
 		}
@@ -116,13 +116,11 @@ public:
 		trie.hash(hash1);
 		trie2.hash(hash2);
 		TS_ASSERT_EQUALS(hash1, hash2);
-		//TS_ASSERT_EQUALS(0, memcmp(hash1.data(), hash2.data(), 32));
 
 		trie.merge_in(std::move(trie2));
 
 		trie.hash(hash2);
 		TS_ASSERT_EQUALS(hash1, hash2);
-		//TS_ASSERT_EQUALS(0, memcmp(hash1.data(), hash2.data(), 32));
 	}
 
 	void test_merge_value_simple() {
@@ -137,7 +135,7 @@ public:
 		Hash hash1, hash2;
 
 		for (uint16_t i = 0; i < 100; i+= 20) {
-			write_unsigned_big_endian(key_buf, i);
+			utils::write_unsigned_big_endian(key_buf, i);
 			trie.insert(key_buf);
 			trie2.insert(key_buf);
 		}
@@ -146,12 +144,12 @@ public:
 
 		trie.hash(hash1);
 		trie2.hash(hash2);
-		TS_ASSERT_EQUALS(0, memcmp(hash1.data(), hash2.data(), 32));
+		TS_ASSERT_EQUALS(hash1, hash2);
 
 		trie.merge_in(std::move(trie2));
 
 		trie.hash(hash2);
-		TS_ASSERT_EQUALS(0, memcmp(hash1.data(), hash2.data(), 32));
+		TS_ASSERT_EQUALS(hash1, hash2);
 
 		TS_ASSERT(trie.metadata_integrity_check());
 	}
@@ -249,14 +247,14 @@ public:
 		mt trie;
 		mt :: prefix_t key_buf;
 		for (uint16_t i = 0; i < 1000; i+=20) {
-			write_unsigned_big_endian(key_buf, i);
+			utils::write_unsigned_big_endian(key_buf, i);
 			trie.insert(key_buf);
 		}
 
 		TS_ASSERT_EQUALS(50, trie.uncached_size());
 
 		for (uint16_t i = 0; i < 1000; i += 40) {
-			write_unsigned_big_endian(key_buf, i);
+			utils::write_unsigned_big_endian(key_buf, i);
 			TS_ASSERT(trie.perform_deletion(key_buf));
 		}
 
@@ -277,7 +275,7 @@ public:
 		offer.minPrice = 1;
 
 		for (uint16_t i = 0; i < 1000; i+=20) {
-			write_unsigned_big_endian(key_buf, i);
+			utils::write_unsigned_big_endian(key_buf, i);
 			trie.insert(key_buf, OfferWrapper(offer));
 		}
 		TS_ASSERT_EQUALS(50, trie.size());
@@ -318,33 +316,33 @@ public:
 		offer.minPrice = 1;
 
 		for (uint16_t i = 0; i < 1000; i+=20) {
-			write_unsigned_big_endian(buf, i);
+			utils::write_unsigned_big_endian(buf, i);
 			trie.insert(buf, XdrTypeWrapper<Offer>(offer));
 		}
 		TS_ASSERT_EQUALS(50, trie.size());
 
 		uint16_t threshold = 35;
-		write_unsigned_big_endian(buf, threshold);
+		utils::write_unsigned_big_endian(buf, threshold);
 
 		TS_ASSERT_EQUALS(trie.endow_lt_key(buf), 20);
 
 		threshold = 20;
-		write_unsigned_big_endian(buf, threshold);
+		utils::write_unsigned_big_endian(buf, threshold);
 
 		TS_ASSERT_EQUALS(trie.endow_lt_key(buf), 10);
 
 		threshold = 21;
-		write_unsigned_big_endian(buf, threshold);
+		utils::write_unsigned_big_endian(buf, threshold);
 		TS_ASSERT_EQUALS(trie.endow_lt_key(buf), 20);
 
 		threshold = 500;
-		write_unsigned_big_endian(buf, threshold);
+		utils::write_unsigned_big_endian(buf, threshold);
 
 		TS_ASSERT_EQUALS(trie.endow_lt_key(buf), 250);
 
 
 		threshold = 2000;
-		write_unsigned_big_endian(buf, threshold);
+		utils::write_unsigned_big_endian(buf, threshold);
 		TS_ASSERT_EQUALS(trie.endow_lt_key(buf), 500);
 	}
 

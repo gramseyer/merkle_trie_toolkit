@@ -17,7 +17,7 @@ byte array, and one is specialized for accountid keys.
 #include "trie/build_endian.h"
 #include "trie/debug_macros.h"
 
-#include "utils/serialize_big_endian.h"
+#include "utils/serialize_endian.h"
 
 namespace trie {
 

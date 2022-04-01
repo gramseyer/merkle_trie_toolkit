@@ -8,7 +8,7 @@
 #include "trie/merkle_trie.h"
 #include "trie/xdr/types.h"
 
-#include "utils/serialize_big_endian.h"
+#include "utils/serialize_endian.h"
 
 
 using namespace trie;
@@ -23,7 +23,7 @@ public:
 		mt trie;
 		mt :: prefix_t key_buf;
 		for (uint16_t i = 0; i < 1000; i+= 20) {
-			write_unsigned_big_endian(key_buf, i);
+			utils::write_unsigned_big_endian(key_buf, i);
 			trie.insert(key_buf);
 		}
 
@@ -41,12 +41,12 @@ public:
 		mt trie;
 		mt :: prefix_t key_buf;
 		for (uint16_t i = 0; i < 80; i+=40) {
-			write_unsigned_big_endian(key_buf, i);
+			utils::write_unsigned_big_endian(key_buf, i);
 			trie.insert(key_buf);
 		}
 		mt trie2;
 		for (uint16_t i = 0; i < 80; i+=20) {
-			write_unsigned_big_endian(key_buf, i);
+			utils::write_unsigned_big_endian(key_buf, i);
 			trie2.insert(key_buf);
 		}
 		TS_ASSERT_EQUALS(2, trie.size());
@@ -66,14 +66,14 @@ public:
 		mt trie;
 		mt :: prefix_t key_buf;
 		for (uint16_t i = 0; i < 1000; i+=40) {
-			write_unsigned_big_endian(key_buf, i);
+			utils::write_unsigned_big_endian(key_buf, i);
 			trie.insert(key_buf);
 		}
 
 		mt trie2;
 		
 		for (uint16_t i = 0; i < 1000; i+=20) {
-			write_unsigned_big_endian(key_buf, i);
+			utils::write_unsigned_big_endian(key_buf, i);
 			trie2.insert(key_buf);
 		}
 		TS_ASSERT_EQUALS(25, trie.size());
@@ -94,7 +94,7 @@ public:
 		mt trie;
 		mt :: prefix_t key_buf;
 		for (uint16_t i = 0; i < 1000; i+=20) {
-			write_unsigned_big_endian(key_buf, i);
+			utils::write_unsigned_big_endian(key_buf, i);
 			trie.insert(key_buf);
 		}
 
@@ -102,7 +102,7 @@ public:
 		TS_ASSERT_EQUALS(50, trie.uncached_size());
 
 		for (uint16_t i = 0; i < 1000; i += 40) {
-			write_unsigned_big_endian(key_buf, i);
+			utils::write_unsigned_big_endian(key_buf, i);
 			TS_ASSERT(trie.perform_deletion(key_buf));
 		}
 
@@ -121,7 +121,7 @@ public:
 		mt :: prefix_t key_buf;
 
 		for (uint16_t i = 0; i < 1000; i+=20) {
-			write_unsigned_big_endian(key_buf, i);
+			utils::write_unsigned_big_endian(key_buf, i);
 			trie.insert(key_buf);
 		}
 
@@ -129,7 +129,7 @@ public:
 		TS_ASSERT_EQUALS(50, trie.uncached_size());
 
 		for (uint16_t i = 0; i < 1000; i += 40) {
-			write_unsigned_big_endian(key_buf, i);
+			utils::write_unsigned_big_endian(key_buf, i);
 			TS_ASSERT(trie.mark_for_deletion(key_buf));
 		}
 		TS_ASSERT_EQUALS(50, trie.size());
@@ -149,7 +149,7 @@ public:
 		mt :: prefix_t key_buf;
 
 		for (uint16_t i = 0; i < 1000; i+=20) {
-			write_unsigned_big_endian(key_buf, i);
+			utils::write_unsigned_big_endian(key_buf, i);
 			trie.insert(key_buf);
 		}
 
@@ -163,7 +163,7 @@ public:
 		trie.hash(hash_buf_1);
 
 		for (uint16_t i = 0; i < 1000; i += 40) {
-			write_unsigned_big_endian(key_buf, i);
+			utils::write_unsigned_big_endian(key_buf, i);
 			TS_ASSERT(trie.mark_for_deletion(key_buf));
 		}
 //	unsigned char hash_buf_2[32];
@@ -190,20 +190,20 @@ public:
 		mt :: prefix_t key_buf;
 		
 		for (uint16_t i = 0; i < 1000; i+=20) {
-			write_unsigned_big_endian(key_buf, i);
+			utils::write_unsigned_big_endian(key_buf, i);
 			trie.insert(key_buf);
 		}
 
 		for (uint16_t i = 0; i < 1000; i+=40) {
-			write_unsigned_big_endian(key_buf, i);
+			utils::write_unsigned_big_endian(key_buf, i);
 			trie.mark_for_deletion(key_buf);
 			uint16_t j = i + 20;
-			write_unsigned_big_endian(key_buf, j);
+			utils::write_unsigned_big_endian(key_buf, j);
 			trie.unmark_for_deletion(key_buf);
 		}
 
 		for (uint16_t i = 0; i < 1000; i+=80) {
-			write_unsigned_big_endian(key_buf, i);
+			utils::write_unsigned_big_endian(key_buf, i);
 			trie.unmark_for_deletion(key_buf);
 		}
 
@@ -335,12 +335,12 @@ public:
 		mt :: prefix_t key_buf;
 
 		for (uint16_t i = 0; i < 1000; i+=20) {
-			write_unsigned_big_endian(key_buf, i);
+			utils::write_unsigned_big_endian(key_buf, i);
 			trie.insert(key_buf);
 		}
 
 		for (uint16_t i = 10; i < 1010; i += 20) {
-			write_unsigned_big_endian(key_buf, i);
+			utils::write_unsigned_big_endian(key_buf, i);
 			trie.template insert<RollbackInsertFn<EmptyValue>>(key_buf);
 		}
 
@@ -362,13 +362,13 @@ public:
 		mt :: prefix_t key_buf;
 		
 		for (uint32_t i = 0; i < 10000; i+=207) {
-			write_unsigned_big_endian(key_buf, i);
+			utils::write_unsigned_big_endian(key_buf, i);
 			trie.insert(key_buf);
 		}
 
 
 		for (uint16_t i = 10; i < 10100; i += 207) {
-			write_unsigned_big_endian(key_buf, i);
+			utils::write_unsigned_big_endian(key_buf, i);
 			trie.template insert<RollbackInsertFn<EmptyValue>>(key_buf);
 		}
 		

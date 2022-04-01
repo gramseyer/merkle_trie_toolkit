@@ -23,6 +23,8 @@ virtual addresses).
 
 #include "trie/xdr/types.h"
 
+#include "utils/serialize_endian.h"
+
 #include <sodium.h>
 
 #include <atomic>
@@ -1806,7 +1808,7 @@ MerkleTrie<TEMPLATE_PARAMS>::get_root_hash(Hash& out) {
 	std::array<unsigned char, buf_size> buf;
 	buf.fill(0);
 
-	write_unsigned_big_endian(buf, num_children);
+	utils::write_unsigned_big_endian(buf, num_children);
 	if (num_children > 0) {
 		root->copy_hash_to_buf(buf.data() + 4);
 	} else if (num_children == 0) {
@@ -2017,7 +2019,7 @@ ProofNode
 TrieNode<TEMPLATE_PARAMS>::create_proof_node() {
 	if (prefix_len == MAX_KEY_LEN_BITS) {
 		ProofNode output;
-		write_unsigned_big_endian(
+		utils::write_unsigned_big_endian(
 			output.prefix_length_and_bv.data(), prefix_len.len);
 		return output;
 	}
@@ -2029,7 +2031,7 @@ TrieNode<TEMPLATE_PARAMS>::create_proof_node() {
 		bv.add((*iter).first);
 	}
 
-	write_unsigned_big_endian(
+	utils::write_unsigned_big_endian(
 		output.prefix_length_and_bv.data(), prefix_len.len);
 
 	bv.write_to(output.prefix_length_and_bv.data() 
