@@ -1,0 +1,16 @@
+#pragma once
+
+#ifndef DEBUG_LEVEL_NONE
+#define DEBUG_LEVEL_NONE 100
+#endif
+
+#ifndef DEBUG_LEVEL_ERROR
+#define DEBUG_LEVEL_ERROR 15
+#endif
+
+#ifndef DEBUG_LEVEL_INFO
+#define DEBUG_LEVEL_INFO 10
+#endif
+
+#define TRIE_DEBUG DEBUG_LEVEL_ERROR
+#define PROOF_DEBUG DEBUG_LEVEL_NONE

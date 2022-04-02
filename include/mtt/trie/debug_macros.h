@@ -12,20 +12,7 @@ A set of debugging macros.  Activate/deactivate based on DEBUG_LEVEL_* settings.
 Printouts include file/line information.
 */
 
-#ifndef DEBUG_LEVEL_NONE
-#define DEBUG_LEVEL_NONE 100
-#endif
-
-#ifndef DEBUG_LEVEL_ERROR
-#define DEBUG_LEVEL_ERROR 15
-#endif
-
-#ifndef DEBUG_LEVEL_INFO
-#define DEBUG_LEVEL_INFO 10
-#endif
-
-#define TRIE_DEBUG DEBUG_LEVEL_ERROR
-#define PROOF_DEBUG DEBUG_LEVEL_NONE
+#include "mtt/trie/debug_levels.h"
 
 #define TRIE_LOG(s, ...) std::printf((std::string("%-45s") + s + "\n").c_str(), (std::string(__FILE__) + "." + std::to_string(__LINE__) + ":").c_str() __VA_OPT__(,) __VA_ARGS__)
 
@@ -33,15 +20,17 @@ Printouts include file/line information.
 #define LOG(s, ...) TRIE_LOG(s, __VA_ARGS__)
 #endif
 
-#ifndef TEST_START
+#ifndef TEST_START_ON
+	#if TRIE_DEBUG <= DEBUG_LEVEL_INFO
+		#define TEST_START_ON 1
+	#endif
+#endif
 
-#if TRIE_DEBUG <= DEBUG_LEVEL_INFO
+#ifdef TEST_START_ON
 #define TEST_START() LOG("Starting Test:%s", __FUNCTION__)
 #else
 #define TEST_START() (void)0
 #endif
-
-#endif /* #ifndef TEST_START */
 
 #if TRIE_DEBUG <= DEBUG_LEVEL_ERROR
 #define TRIE_ERROR(s, ...) LOG(s, __VA_ARGS__)
