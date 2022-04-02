@@ -1,5 +1,5 @@
 
-%#include "trie/xdr/types.h"
+%#include "mtt/trie/xdr/types.h"
 
 namespace trie
 {

@@ -4,11 +4,11 @@
 #include <cstdio>
 #include <cstring>
 
-#include "trie/debug_macros.h"
-#include "trie/merkle_trie.h"
-#include "trie/xdr/types.h"
+#include "mtt/trie/debug_macros.h"
+#include "mtt/trie/merkle_trie.h"
+#include "mtt/trie/xdr/types.h"
 
-#include "utils/serialize_endian.h"
+#include "mtt/utils/serialize_endian.h"
 
 
 using namespace trie;

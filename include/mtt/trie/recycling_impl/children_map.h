@@ -2,10 +2,10 @@
 
 #include <cstdint>
 
-#include "trie/bitvector.h"
-#include "trie/debug_macros.h"
-#include "trie/recycling_impl/allocator.h"
-#include "trie/utils.h"
+#include "mtt/trie/bitvector.h"
+#include "mtt/trie/debug_macros.h"
+#include "mtt/trie/recycling_impl/allocator.h"
+#include "mtt/trie/utils.h"
 
 namespace trie {
 

@@ -12,16 +12,16 @@
 #include <tbb/parallel_for.h>
 #include <tbb/parallel_reduce.h>
 
-#include "trie/prefix.h"
-#include "trie/spinlock.h"
+#include "mtt/trie/prefix.h"
+#include "mtt/trie/spinlock.h"
 
-#include "trie/recycling_impl/allocator.h"
-#include "trie/recycling_impl/ranges.h"
-#include "trie/recycling_impl/children_map.h"
+#include "mtt/trie/recycling_impl/allocator.h"
+#include "mtt/trie/recycling_impl/ranges.h"
+#include "mtt/trie/recycling_impl/children_map.h"
 
-#include "utils/threadlocal_cache.h"
+#include "mtt/utils/threadlocal_cache.h"
 
-#include "trie/xdr/types.h"
+#include "mtt/trie/xdr/types.h"
 
 namespace trie {
 

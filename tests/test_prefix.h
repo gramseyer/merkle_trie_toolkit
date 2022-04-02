@@ -3,8 +3,8 @@
 #include <cstdint>
 #include <cstring>
 
-#include "trie/prefix.h"
-#include "trie/build_endian.h"
+#include "mtt/trie/prefix.h"
+#include "mtt/trie/build_endian.h"
 
 using namespace trie;
 using namespace utils;

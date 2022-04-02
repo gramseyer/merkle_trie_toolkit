@@ -51,5 +51,5 @@ AM_CONDITIONAL(MTT_BUILD_TESTS,
                [test -z "$mtt_disable_tests"])
 
 AC_CONFIG_HEADERS([config.h])
-AC_CONFIG_FILES([Makefile merkle_trie_toolkit.pc include/trie/build_endian.h])
+AC_CONFIG_FILES([Makefile merkle_trie_toolkit.pc include/mtt/trie/build_endian.h merkle_trie_toolkit-uninstalled.pc])
 AC_OUTPUT

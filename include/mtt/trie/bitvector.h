@@ -1,8 +1,8 @@
 #pragma once
 
-#include "trie/build_endian.h"
+#include "mtt/trie/build_endian.h"
 
-#include "utils/serialize_endian.h"
+#include "mtt/utils/serialize_endian.h"
 
 namespace trie {
 /*!

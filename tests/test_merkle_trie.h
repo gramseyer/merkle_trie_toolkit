@@ -4,10 +4,10 @@
 #include <cstdio>
 #include <cstring>
 
-#include "trie/debug_macros.h"
-#include "trie/merkle_trie.h"
+#include "mtt/trie/debug_macros.h"
+#include "mtt/trie/merkle_trie.h"
 
-#include "utils/serialize_endian.h"
+#include "mtt/utils/serialize_endian.h"
 
 #include "tests/offer_metadata.h"
 #include "tests/xdr/test_types.h"

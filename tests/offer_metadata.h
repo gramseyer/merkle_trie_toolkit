@@ -4,7 +4,7 @@
 #include <cstdint>
 #include <sstream>
 
-#include "trie/metadata.h"
+#include "mtt/trie/metadata.h"
 
 #include "tests/xdr/test_types.h"
 

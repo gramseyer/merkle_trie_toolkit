@@ -8,7 +8,7 @@ This implementation stores a literal list of pointers.
 
 */
 
-#include "trie/bitvector.h"
+#include "mtt/trie/bitvector.h"
 
 namespace trie {
 

@@ -1,7 +1,6 @@
 namespace trie
 {
 
-
 typedef unsigned hyper uint64;
 typedef unsigned int uint32;
 

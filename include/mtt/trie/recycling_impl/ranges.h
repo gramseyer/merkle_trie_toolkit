@@ -6,9 +6,9 @@ TBB helper objects used for iterating over tries
 
 */
 
-#include "trie/prefix.h"
-#include "trie/recycling_impl/allocator.h"
-#include "utils/threadlocal_cache.h"
+#include "mtt/trie/prefix.h"
+#include "mtt/trie/recycling_impl/allocator.h"
+#include "mtt/utils/threadlocal_cache.h"
 
 #include <unordered_map>
 #include <unordered_set>

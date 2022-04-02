@@ -4,13 +4,13 @@
 #include <cstdio>
 #include <cstring>
 
-#include "trie/debug_macros.h"
-#include "trie/recycling_impl/trie.h"
-#include "trie/utils.h"
-#include "trie/xdr/types.h"
+#include "mtt/trie/debug_macros.h"
+#include "mtt/trie/recycling_impl/trie.h"
+#include "mtt/trie/utils.h"
+#include "mtt/trie/xdr/types.h"
 
-#include "utils/serialize_endian.h"
-#include "utils/time.h"
+#include "mtt/utils/serialize_endian.h"
+#include "mtt/utils/time.h"
 
 #include <sodium.h>
 

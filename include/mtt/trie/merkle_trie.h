@@ -13,17 +13,17 @@ In this implementation, children pointers are standard 8-byte pointers (i.e.
 virtual addresses).
 */
 
-#include "trie/children_map.h"
-#include "trie/metadata.h"
-#include "trie/prefix.h"
-#include "trie/ranges.h"
-#include "trie/utils.h"
+#include "mtt/trie/children_map.h"
+#include "mtt/trie/metadata.h"
+#include "mtt/trie/prefix.h"
+#include "mtt/trie/ranges.h"
+#include "mtt/trie/utils.h"
 
-#include "trie/debug_macros.h"
+#include "mtt/trie/debug_macros.h"
 
-#include "trie/xdr/types.h"
+#include "mtt/trie/xdr/types.h"
 
-#include "utils/serialize_endian.h"
+#include "mtt/utils/serialize_endian.h"
 
 #include <sodium.h>
 

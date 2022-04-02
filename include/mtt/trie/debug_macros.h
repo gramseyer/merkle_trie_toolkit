@@ -4,7 +4,7 @@
 #include <iomanip>
 #include <sstream>
 
-#include "xdr/types.h"
+#include "mtt/trie/xdr/types.h"
 
 /*! \file debug_macros.h
 
@@ -75,7 +75,6 @@ Printouts include file/line information.
 #define PROOF_INFO_F(s) (void)0
 #endif
 
-namespace trie {
 namespace debug {
 //! Convert a byte array to a hex string.
 static std::string array_to_str(const unsigned char* array, const int len) {
@@ -88,12 +87,19 @@ static std::string array_to_str(const unsigned char* array, const int len) {
 }
 
 [[maybe_unused]]
-static std::string hash_to_str(const Hash& hash) {
+static std::string hash_to_str(const trie::Hash& hash) {
 	return array_to_str(hash.data(), hash.size());
 }
 
+template<typename ArrayLike>
+[[maybe_unused]]
+static std::string
+array_to_str(const ArrayLike& array)
+{
+	return array_to_str(array.data(), array.size());
+}
+
 } /* namespace debug */
-} /* namespace trie */
 
 
 

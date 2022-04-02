@@ -14,10 +14,10 @@ byte array, and one is specialized for accountid keys.
 
 #include <tbb/blocked_range.h> // to get tbb::split
 
-#include "trie/build_endian.h"
-#include "trie/debug_macros.h"
+#include "mtt/trie/build_endian.h"
+#include "mtt/trie/debug_macros.h"
 
-#include "utils/serialize_endian.h"
+#include "mtt/utils/serialize_endian.h"
 
 namespace trie {
 

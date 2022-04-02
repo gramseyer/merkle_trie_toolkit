@@ -14,16 +14,16 @@ SUFFIXES = .x.h
 # (system headers find the xdrpp version instead of the system
 # version).  Creating ./config.h and then copying it into ./xdrpp/
 # solves the problem.
-include/trie/config.h: $(builddir)/config.h
-	cp $(builddir)/config.h include/trie/config.h
+include/mtt/trie/config.h: $(builddir)/config.h
+	cp $(builddir)/config.h include/mtt/trie/config.h
 
-#pkginclude_HEADERS = include/trie/build_endian.h include/trie/xdr/types.h
+#pkginclude_HEADERS = include/mtt/trie/build_endian.h include/mtt/trie/xdr/types.h
 
 #pkgconfigdir = $(libdir)/pkgconfig
 #pkgconfig_DATA = xdrpp.pc
 
 CLEANFILES = *~ */*~ */*/*~ .gitignore~
-#DISTCLEANFILES = include/trie/config.h
+#DISTCLEANFILES = include/mtt/trie/config.h
 
 #distclean-local:
 #	rm -rf autom4te.cache
@@ -32,7 +32,7 @@ CLEANFILES = *~ */*~ */*/*~ .gitignore~
 #	cd $(srcdir) && rm -rf `sed -ne 's!^/!!p' .gitignore`
 
 #EXTRA_DIST = .gitignore autogen.sh \
-#	include/trie/build_endian.h.in
+#	include/mtt/trie/build_endian.h.in
 
 TEST_SRCS = \
 	tests/test_prefix.h \
@@ -41,17 +41,15 @@ TEST_SRCS = \
 	tests/test_recycling_trie.h
 
 .x.h:
-	echo "wtf" && \
-	echo $< && \
 	$(XDRC)  -hh -o $@ $<
 
-X_FILES = include/trie/xdr/types.x
+X_FILES = include/mtt/trie/xdr/types.x
 
 TEST_X_FILES = tests/xdr/test_types.x
 
-BUILT_SOURCES = include/trie/config.h $(X_FILES:.x=.h)
+BUILT_SOURCES = include/mtt/trie/config.h $(X_FILES:.x=.h)
 
-$(top_builddir)/include/trie/xdr/types.h : $(XDRC)
+$(top_builddir)/include/mtt/trie/xdr/types.h : $(XDRC)
 $(top_builddir)/tests/xdr/test_types.h : $(XDRC)
 
 #no idea but including this shorthand somehow screws up this configure script
