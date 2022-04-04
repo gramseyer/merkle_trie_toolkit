@@ -116,6 +116,7 @@ static T read_unsigned_little_endian(const unsigned char* buf) {
 		output<<=8;
 		output+=buf[loc - 1];
 	}
+	return output;
 }
 
 
