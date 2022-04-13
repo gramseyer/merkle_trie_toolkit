@@ -81,9 +81,8 @@ public:
 				tbb::blocked_range<uint64_t>(0, experiment_sz),
 				[&cache, &trie] (auto r) {
 					auto& local = cache.get(trie);
-					EmptyValue v;
 					for (auto i = r.begin(); i < r.end(); i++) {
-						local.insert(i * 7, v);
+						local.insert(i * 7, EmptyValue());
 					}
 				});
 			auto inittime = utils::measure_time(ts);

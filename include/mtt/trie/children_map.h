@@ -10,6 +10,10 @@ This implementation stores a literal list of pointers.
 
 #include "mtt/trie/bitvector.h"
 
+#include <cstdint>
+#include <cstddef>
+#include <memory>
+
 namespace trie {
 
 namespace {
@@ -70,13 +74,13 @@ private:
 public:
 
 	//! Set this instance to storing a trie value.
-	void set_value(ValueType new_value) {
+	void set_value(ValueType&& new_value) {
 		if (!value_active) {
 			clear_open_links();
 			new (&value_) ValueType();
 			value_active = true;
 		}
-		value_ = new_value;
+		value_ = std::move(new_value);
 	}
 
 	uint16_t get_bv() const {
@@ -91,7 +95,10 @@ public:
 	}
 
 	ValueType& value() {
-		return value_;
+		if (value_active) {
+			return value_;
+		}
+		throw std::runtime_error("can't get value from non leaf");
 	}
 
 	//! leaves map as active union member
@@ -105,8 +112,8 @@ public:
 		bv.clear();
 	}
 
-	FixedChildrenMap(ValueType value) 
-		: value_(value), bv{0}, value_active(true) {}
+	FixedChildrenMap(ValueType&& value) 
+		: value_(std::move(value)), bv{0}, value_active(true) {}
 
 	FixedChildrenMap() : value_(), bv{0}, value_active(true) {}	
 
@@ -116,7 +123,7 @@ public:
 		, value_active{other.value_active} {
 
 		if (other.value_active) {
-			value_ = other.value_;
+			value_ = std::move(other.value_);
 		} else {
 			value_.~ValueType();
 			steal_ptr_map(other);

@@ -170,7 +170,7 @@ private:
 	// insert preserves metadata
 	template<typename InsertFn, typename InsertedValueType>
 	const MetadataType _insert(
-		const prefix_t& key, const InsertedValueType& leaf_value);
+		const prefix_t& key, InsertedValueType&& leaf_value);
 
 	Hash& get_hash_ptr() {
 		return hash;
@@ -218,6 +218,8 @@ public:
 			std::move(new_children), prefix, prefix_len);
 	}
 
+	//TODO investigate passing prefix by reference
+
 	//! Constructor for splitting a prefix into branches
 	//! We transfer all of the root nodes stuff to the child
 	//! Caller should set metadata of this node.
@@ -239,11 +241,14 @@ public:
 		const prefix_t key, 
 		typename std::enable_if<
 			std::is_same<ValueType, InsertedValueType>::value, 
-			InsertedValueType>::type leaf_value) {
+			InsertedValueType&&>::type leaf_value) {
+
+			auto metadata = InsertFn::template new_metadata<MetadataType>(leaf_value);
+
 		return std::make_unique<TrieNode>(
 			key, 
-			leaf_value, 
-			InsertFn::template new_metadata<MetadataType>(leaf_value));
+			std::move(leaf_value), 
+			metadata);
 	}
 
 	//! Value leaves for instances where the input value is not the value stored
@@ -256,22 +261,26 @@ public:
 		const prefix_t key, 
 		typename std::enable_if<
 			!std::is_same<ValueType, InsertedValueType>::value,
-			InsertedValueType>::type leaf_value) {
+			InsertedValueType&&>::type leaf_value) {
 
 		ValueType value_out = InsertFn::new_value(key);
-		InsertFn::value_insert(value_out, leaf_value);
+
+		auto metadata = InsertFn::template new_metadata<MetadataType>(leaf_value);
+
+		InsertFn::value_insert(value_out, std::move(leaf_value));
+
 		return std::make_unique<TrieNode>(
 			key, 
 			value_out, 
-			InsertFn::template new_metadata<MetadataType>(leaf_value));
+			metadata);
 	}
 
 	//! Constructor for value leaves.
 	TrieNode(
 		const prefix_t key, 
-		ValueType leaf_value, 
+		ValueType&& leaf_value, 
 		const MetadataType& base_metadata)
-	: children(leaf_value)
+	: children(std::move(leaf_value))
 	, prefix(key)
 	, prefix_len(MAX_KEY_LEN_BITS)
 	, metadata()
@@ -414,7 +423,7 @@ public:
 	template<bool x = HAS_VALUE, typename InsertFn, typename InsertedValueType>
 	void insert(
 		typename std::enable_if<x, const prefix_t&>::type key, 
-		const InsertedValueType& leaf_value);
+		InsertedValueType&& leaf_value);
 
 	//! Insert key, overwriting previous key (if it exists).
 	//! "Overwrite" means InsertFn's overwrite callback
@@ -432,6 +441,13 @@ public:
 	template<bool x = HAS_VALUE>
 	std::optional<ValueType> 
 	get_value(typename std::enable_if<x, const prefix_t&>::type query_key) const;
+
+	//! Get the value associated with a given key.
+	//! throws if key is not present
+	template<bool x = HAS_VALUE>
+	ValueType const&
+	get_value_nolocks(typename std::enable_if<x, const prefix_t&>::type query_key) const;
+
 
 	void append_hash_to_vec(std::vector<unsigned char>& buf) {
 		[[maybe_unused]]
@@ -744,14 +760,19 @@ public:
 
 	//! Apply some function (which can modify trie values) to the value
 	//! stored with the queried key.
+	//! Throws in case query_prefix not present.
 	template<typename ModifyFn>
 	void
-	modify_value_nolocks(const prefix_t query_prefix, ModifyFn& fn);
+	modify_value_nolocks(const prefix_t& query_prefix, ModifyFn& fn);
+
+	template<typename ModifyFn>
+	void
+	modify_value_nolocks(const prefix_t& query_prefix);
 
 	//concurrent modification will cause problems here
 	TrieNode*
 	get_subnode_ref_nolocks(
-		const prefix_t query_prefix, const PrefixLenBits query_len);
+		const prefix_t& query_prefix, const PrefixLenBits query_len);
 
 	template<typename VectorType>
 	void 
@@ -1109,6 +1130,12 @@ public:
 		return root -> get_lowest_key();
 	}
 
+	template<typename ModifyFn>
+	void
+	modify_value_nolocks(const prefix_t& query_prefix) {
+		root -> template modify_value_nolocks<ModifyFn>(query_prefix);
+	}
+
 	MetadataType get_root_metadata() {
 		std::lock_guard lock(*hash_modify_mtx);
 		return root -> get_metadata_unsafe(); // ok bc exclusive lock on trie
@@ -1122,6 +1149,15 @@ public:
 		std::shared_lock lock(*hash_modify_mtx);
 
 		return root -> get_value(query_key);
+	}
+
+	template<bool x = HAS_VALUE>
+	ValueType const&
+	get_value_nolocks(
+		typename std::enable_if<x, const prefix_t&>::type query_key) const {
+		static_assert(x == HAS_VALUE, "no funny business");
+
+		return root -> get_value_nolocks(query_key);
 	}
 
 	template<typename VectorType>
@@ -1220,17 +1256,17 @@ public:
 		typename InsertedValueType = ValueType, 
 		bool x = HAS_VALUE>
 	void insert(
-		typename std::enable_if<x, const prefix_t>::type data, 
-		InsertedValueType leaf_value)
+		typename std::enable_if<x, const prefix_t&>::type data, 
+		InsertedValueType&& leaf_value)
 	{
 		std::lock_guard lock(*hash_modify_mtx);
 
 		invalidate_hash();
-		root->template insert<x, InsertFn, InsertedValueType>(data, leaf_value);
+		root->template insert<x, InsertFn, InsertedValueType>(data, std::move(leaf_value));
 	}
 
 	template<typename InsertFn = OverwriteInsertFn<ValueType>, bool x = HAS_VALUE>
-	void insert(typename std::enable_if<!x, const prefix_t>::type data) {
+	void insert(typename std::enable_if<!x, const prefix_t&>::type data) {
 		std::lock_guard lock(*hash_modify_mtx);
 
 		invalidate_hash();
@@ -1453,7 +1489,7 @@ void TrieNode<TEMPLATE_PARAMS>::_log(std::string padding) const {
 	}
 	if (prefix_len == MAX_KEY_LEN_BITS) {
 		std::vector<unsigned char> buf;
-		auto value = children.value();
+		auto const& value = children.value();
 		//value.serialize();
 		value.copy_data(buf);
 		auto str = debug::array_to_str(buf.data(), buf.size());
@@ -2075,10 +2111,10 @@ TEMPLATE_SIGNATURE
 template<bool x, typename InsertFn, typename InsertedValueType>
 void TrieNode<TEMPLATE_PARAMS>::insert(
 	typename std::enable_if<x, const prefix_t&>::type data,
-	const InsertedValueType& leaf_value) {
+	InsertedValueType&& leaf_value) {
 
 	static_assert(x == HAS_VALUE, "no funny games");
-	_insert<InsertFn, InsertedValueType>(data, leaf_value);
+	_insert<InsertFn, InsertedValueType>(data, std::move(leaf_value));
 }
 
 TEMPLATE_SIGNATURE
@@ -2099,7 +2135,7 @@ TEMPLATE_SIGNATURE
 template<typename InsertFn, typename InsertedValueType>
 const MetadataType 
 TrieNode<TEMPLATE_PARAMS>::_insert(
-	const prefix_t& data, const InsertedValueType& leaf_value) {
+	const prefix_t& data, InsertedValueType&& leaf_value) {
 
 	invalidate_hash();
 
@@ -2141,7 +2177,7 @@ TrieNode<TEMPLATE_PARAMS>::_insert(
 		//new value
 		children.set_value(InsertFn::new_value(prefix));
 
-		InsertFn::value_insert(children.value(), leaf_value);
+		InsertFn::value_insert(children.value(), std::move(leaf_value));
 		//value = leaf_value;
 		if (HAS_METADATA) {
 			metadata.clear();
@@ -2156,7 +2192,7 @@ TrieNode<TEMPLATE_PARAMS>::_insert(
 	else if (prefix_match_len == prefix_len) {
 		if (prefix_len == MAX_KEY_LEN_BITS) {
 			TRIE_INFO("overwriting existing key");
-			InsertFn::value_insert(children.value(), leaf_value);
+			InsertFn::value_insert(children.value(), std::move(leaf_value));
 			//value = leaf_value;
 			if (HAS_METADATA) {
 				//value = leaf_value already.  This gets around
@@ -2177,17 +2213,17 @@ TrieNode<TEMPLATE_PARAMS>::_insert(
 			
 			if (HAS_METADATA) {
 				auto metadata_delta 
-					= child->template _insert<InsertFn>(data, leaf_value);
+					= child->template _insert<InsertFn>(data, std::move(leaf_value));
 				update_metadata(metadata_delta);
 				return metadata_delta;
 			} else {
-				child->template _insert<InsertFn>(data, leaf_value);
+				child->template _insert<InsertFn>(data, std::move(leaf_value));
 				return MetadataType{};
 			}
 		} else {
 			TRIE_INFO("make new leaf");
 			auto new_child = make_value_leaf<InsertFn, InsertedValueType>(
-					data, leaf_value);
+					data, std::move(leaf_value));
 			MetadataType new_child_meta;
 			if (HAS_METADATA) {
 				// safe b/c of exclusive lock on *this
@@ -2209,7 +2245,7 @@ TrieNode<TEMPLATE_PARAMS>::_insert(
 		}
 
 		auto new_child 
-			= make_value_leaf<InsertFn, InsertedValueType>(data, leaf_value);
+			= make_value_leaf<InsertFn, InsertedValueType>(data, std::move(leaf_value));
 		
 		children.clear();
 
@@ -3242,7 +3278,7 @@ MerkleTrie<TEMPLATE_PARAMS>::parallel_batch_value_modify(
 TEMPLATE_SIGNATURE
 TrieNode<TEMPLATE_PARAMS>*
 TrieNode<TEMPLATE_PARAMS>::get_subnode_ref_nolocks(
-	const prefix_t query_prefix, const PrefixLenBits query_len) {
+	const prefix_t& query_prefix, const PrefixLenBits query_len) {
 
 	auto prefix_match_len = get_prefix_match_len(query_prefix, query_len);
 
@@ -3283,7 +3319,7 @@ TEMPLATE_SIGNATURE
 template<typename ModifyFn>
 void
 TrieNode<TEMPLATE_PARAMS>::modify_value_nolocks(
-	const prefix_t query_prefix, ModifyFn& fn) {
+	const prefix_t& query_prefix, ModifyFn& fn) {
 	
 	invalidate_hash();
 
@@ -3317,6 +3353,46 @@ TrieNode<TEMPLATE_PARAMS>::modify_value_nolocks(
 
 	(*iter).second -> modify_value_nolocks(query_prefix, fn);
 }
+
+TEMPLATE_SIGNATURE
+template<typename ModifyFn>
+void
+TrieNode<TEMPLATE_PARAMS>::modify_value_nolocks(
+	const prefix_t& query_prefix) {
+	
+	invalidate_hash();
+
+	if (prefix_len == MAX_KEY_LEN_BITS) {
+		ModifyFn::apply(children.value());
+		return;
+	}
+
+	auto prefix_match_len = get_prefix_match_len(query_prefix);
+	if (prefix_match_len != prefix_len) {
+
+		std::printf("my prefix: %s %d\n query: %s\n", 
+			prefix.to_string(prefix_len).c_str(), 
+			prefix_len.len,
+			query_prefix.to_string(MAX_KEY_LEN_BITS).c_str());
+		throw std::runtime_error("invalid recurison: value nonexistent");
+	}
+
+	auto bb = get_branch_bits(query_prefix);
+
+	auto iter = children.find(bb);
+	if (iter == children.end()) {
+		throw std::runtime_error(
+			"branch bits not found: can't modify nonexistent value");
+	}
+
+	if (!(*iter). second) {
+		throw std::runtime_error(
+			"modify_value_nolocks found a nullptr lying around");
+	}
+
+	(*iter).second -> template modify_value_nolocks<ModifyFn>(query_prefix);
+}
+
 
 TEMPLATE_SIGNATURE
 template<typename ApplyFn>
@@ -3826,6 +3902,28 @@ TrieNode<TEMPLATE_PARAMS>::get_value(
 	return (*iter).second->get_value(query_key);
 }
 
+TEMPLATE_SIGNATURE
+template<bool x>
+ValueType const&
+TrieNode<TEMPLATE_PARAMS>::get_value_nolocks(
+	typename std::enable_if<x, const prefix_t&>::type query_key) const {
+	
+	[[maybe_unused]]
+	auto lock = locks.template lock<TrieNode::shared_lock_t> ();
+
+	if (prefix_len == MAX_KEY_LEN_BITS) {
+		return children.value();
+	}
+
+	auto branch_bits = get_branch_bits(query_key);
+
+	auto iter = children.find(branch_bits);
+	if (iter == children.end()) {
+		throw std::runtime_error("tried to get value not present in trie");
+	}
+
+	return (*iter).second->get_value_nolocks(query_key);
+}
 
 TEMPLATE_SIGNATURE
 template<typename VectorType>

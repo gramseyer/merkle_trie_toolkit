@@ -60,7 +60,7 @@ struct EmptyMetadata {
 	using AtomicT = EmptyMetadata;
 
 	template<typename ValueType>
-	EmptyMetadata(ValueType ptr) {}
+	EmptyMetadata(ValueType const& ptr) {}
 
 	EmptyMetadata () {}
 

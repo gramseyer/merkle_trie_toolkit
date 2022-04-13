@@ -177,10 +177,10 @@ public:
 	template<typename InsertFn, typename InsertedValueType>
 	void set_as_value_leaf(
 		const prefix_t key, 
-		typename std::enable_if<std::is_same<ValueType, InsertedValueType>::value, const InsertedValueType&>::type value,
+		typename std::enable_if<std::is_same<ValueType, InsertedValueType>::value, InsertedValueType&&>::type value,
 		allocation_context_t& allocator) {
 
-		children.set_value(allocator, value);
+		children.set_value(allocator, std::move(value));
 		prefix = key;
 		prefix_len = MAX_KEY_LEN_BITS;
 		set_size(1);
@@ -190,12 +190,12 @@ public:
 	template<typename InsertFn, typename InsertedValueType>
 	void set_as_value_leaf(
 		const prefix_t key, 
-		typename std::enable_if<!std::is_same<ValueType, InsertedValueType>::value, const InsertedValueType&>::type value,
+		typename std::enable_if<!std::is_same<ValueType, InsertedValueType>::value, InsertedValueType&&>::type value,
 		allocation_context_t& allocator) {
 		ValueType value_out = InsertFn::new_value(key);
-		InsertFn::value_insert(value_out, value);
+		InsertFn::value_insert(value_out, std::move(value));
 
-		children.set_value(allocator, value_out);
+		children.set_value(allocator, std::move(value_out));
 		prefix = key;
 		prefix_len = MAX_KEY_LEN_BITS;
 		set_size(1);
@@ -276,7 +276,7 @@ public:
 
 	//not threadsafe
 	template<typename InsertFn, typename InsertedValueType>
-	int32_t insert(prefix_t key, const InsertedValueType& leaf_value, allocation_context_t& allocator);
+	int32_t insert(prefix_t key, InsertedValueType&& leaf_value, allocation_context_t& allocator);
 
 	//not threadsafe
 	template<typename... ApplyToValueBeforeHashFn>
@@ -479,9 +479,9 @@ public:
 	}
 
 	template<typename InsertFn = OverwriteInsertFn<ValueType>, typename InsertedValueType = ValueType>
-	void insert(AccountID account, const InsertedValueType& value) {
+	void insert(AccountID account, InsertedValueType&& value) {
 		auto& ref = allocation_context.get_object(root);
-		ref.template insert<InsertFn, InsertedValueType>(UInt64Prefix{account}, value, allocation_context);
+		ref.template insert<InsertFn, InsertedValueType>(UInt64Prefix{account}, std::move(value), allocation_context);
 	}
 
 	void log() {
@@ -686,7 +686,7 @@ int32_t AccountTrieNode<ValueType>::size() const {
 template<typename ValueType>
 template<typename InsertFn, typename InsertedValueType>
 int32_t 
-AccountTrieNode<ValueType>::insert(prefix_t key, const InsertedValueType& leaf_value, allocation_context_t& allocator) {
+AccountTrieNode<ValueType>::insert(prefix_t key, InsertedValueType&& leaf_value, allocation_context_t& allocator) {
 
 	invalidate_hash();
 
@@ -709,7 +709,7 @@ AccountTrieNode<ValueType>::insert(prefix_t key, const InsertedValueType& leaf_v
 		// dealing with initial node case
 
 		//std::printf("setting initial value leaf\n");
-		set_as_value_leaf<InsertFn, InsertedValueType>(key, leaf_value, allocator);
+		set_as_value_leaf<InsertFn, InsertedValueType>(key, std::move(leaf_value), allocator);
 		//log("post init:", allocator);
 
 		return 1;
@@ -717,7 +717,7 @@ AccountTrieNode<ValueType>::insert(prefix_t key, const InsertedValueType& leaf_v
 
 	if (prefix_match_len == MAX_KEY_LEN_BITS) {
 		//std::printf("overwrite value");
-		InsertFn::value_insert(children.value(allocator), leaf_value);
+		InsertFn::value_insert(children.value(allocator), std::move(leaf_value));
 		return 0;
 	}
 
@@ -728,7 +728,7 @@ AccountTrieNode<ValueType>::insert(prefix_t key, const InsertedValueType& leaf_v
 
 		if (iter != children.end()) {
 			auto& child = allocator.get_object((*iter).second);
-			auto sz_delta = child.template insert<InsertFn, InsertedValueType>(key, leaf_value, allocator);
+			auto sz_delta = child.template insert<InsertFn, InsertedValueType>(key, std::move(leaf_value), allocator);
 			alter_size(sz_delta);
 			return sz_delta;
 		} else {
@@ -739,7 +739,7 @@ AccountTrieNode<ValueType>::insert(prefix_t key, const InsertedValueType& leaf_v
 
 			auto& new_child = children.init_new_child(branch_bits, allocator);
 			
-			new_child.template set_as_value_leaf<InsertFn, InsertedValueType>(key, leaf_value, allocator);
+			new_child.template set_as_value_leaf<InsertFn, InsertedValueType>(key, std::move(leaf_value), allocator);
 			alter_size(1);
 			//children.emplace(branch_bits, new_child_ptr);
 			return 1;
@@ -765,7 +765,7 @@ AccountTrieNode<ValueType>::insert(prefix_t key, const InsertedValueType& leaf_v
 	//auto new_child_ptr = allocator.allocate();
 	auto& new_child = children.init_new_child(new_child_branch, allocator);//d allocator.get_object(new_child_ptr);
 
-	new_child.template set_as_value_leaf<InsertFn, InsertedValueType>(key, leaf_value, allocator);
+	new_child.template set_as_value_leaf<InsertFn, InsertedValueType>(key, std::move(leaf_value), allocator);
 
 
 

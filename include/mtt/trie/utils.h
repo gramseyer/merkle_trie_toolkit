@@ -1,7 +1,10 @@
 #pragma once
 
+#include <cstdint>
+#include <memory>
 #include <shared_mutex>
 #include <variant>
+#include <vector>
 
 #include <xdrpp/marshal.h>
 
@@ -15,7 +18,29 @@ namespace trie {
 
 struct EmptyValue {
 
-	constexpr static uint16_t data_len() {
+	constexpr static uint16_t data_len()
+	{
+		return 0;
+	}
+
+	constexpr static void serialize() {}
+
+	constexpr static void copy_data(std::vector<uint8_t>& buf) {}
+};
+
+template<typename V>
+struct PointerValue {
+	// for values that can't be moved
+	std::unique_ptr<V> v;
+
+	PointerValue() : v(nullptr) {}
+
+	PointerValue(std::unique_ptr<V>&& val)
+		: v(std::move(val))
+		{}
+
+	constexpr static uint16_t data_len()
+	{
 		return 0;
 	}
 
@@ -76,8 +101,8 @@ struct OverwriteMergeFn {
 template<typename ValueType>
 struct OverwriteInsertFn : public GenericInsertFn<ValueType> {
 
-	static void value_insert(ValueType& main_value, const ValueType& other_value) {
-		main_value = other_value;
+	static void value_insert(ValueType& main_value, ValueType&& other_value) {
+		main_value = std::move(other_value);
 	}
 
 	template<typename AtomicMetadataType>

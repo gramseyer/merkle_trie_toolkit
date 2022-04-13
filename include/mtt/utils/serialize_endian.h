@@ -1,7 +1,11 @@
 #pragma once
 
+#include <array>
 #include <concepts>
 #include <cstdint>
+#include <cstddef>
+#include <stdexcept>
+#include <vector>
 
 /*! \file serialize_endian.h Utility functions for reading and writing 
     quantities in {big,little}-endian format 
@@ -21,13 +25,13 @@ static void write_unsigned_big_endian(array& buf, const T& value, const size_t o
 	for (uint8_t loc = 0; loc < sz; loc++) {
 		uint8_t shift = ((sz - loc - 1) * 8);
 		uint8_t byte = (((value>>shift) & 0xFF));
-		buf.at(loc + offset) =  byte;
+		buf.at(loc + offset) = byte;
 	}
 }
 
 //! Appends \a value to \a buf, written in big endian
 template<std::unsigned_integral T>
-static void append_unsigned_big_endian(std::vector<unsigned char>& buf, const T& value) {
+static void append_unsigned_big_endian(std::vector<uint8_t>& buf, const T& value) {
 	constexpr size_t sz = sizeof(T);
 
 	static_assert((sz-1)*8 <= UINT8_MAX, "if this happens we need to account for overflows on mask shift");
