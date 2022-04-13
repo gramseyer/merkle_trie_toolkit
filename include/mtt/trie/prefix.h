@@ -133,8 +133,13 @@ struct ByteArrayPrefix {
 			data.fill(0);
 		}
 
-	ByteArrayPrefix(const std::array<unsigned char, MAX_LEN_BYTES>& input)
+	// this method in particular requires little endianness
+	template<typename ArrayLike = std::array<uint8_t, MAX_LEN_BYTES>>
+	ByteArrayPrefix(const ArrayLike& input)
 		: data() {
+			
+			static_assert(sizeof(ArrayLike) == MAX_LEN_BYTES);
+
 			data.fill(0);
 			auto* ptr = reinterpret_cast<unsigned char*>(data.data());
 			memcpy(ptr, input.data(), MAX_LEN_BYTES);

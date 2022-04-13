@@ -119,5 +119,19 @@ static T read_unsigned_little_endian(const unsigned char* buf) {
 	return output;
 }
 
+template<std::unsigned_integral T>
+static T read_unsigned_little_endian_fixed_size(const uint8_t* buf, size_t to_read)
+{
+	if (to_read >= sizeof(T)) {
+		throw std::runtime_error("invalid read");
+	}
+
+	T output = 0;
+	for (uint8_t loc = to_read; loc != 0; loc--) {
+		output<<=8;
+		output+=buf[loc - 1];
+	}
+	return output;
+}
 
 } /* utils */
