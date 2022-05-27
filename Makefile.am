@@ -36,6 +36,7 @@ CLEANFILES = *~ */*~ */*/*~ .gitignore~
 
 TEST_SRCS = \
 	tests/test_merkle_trie.cc \
+	tests/test_merkle_trie_metadata.cc \
 	tests/test_prefix.cc \
 	tests/test_recycling_trie.cc \
 	tests/test_serialize.cc
