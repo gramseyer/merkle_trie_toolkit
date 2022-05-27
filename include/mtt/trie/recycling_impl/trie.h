@@ -20,6 +20,7 @@
 #include "mtt/trie/recycling_impl/children_map.h"
 
 #include "mtt/utils/threadlocal_cache.h"
+#include "mtt/utils/serialize_endian.h"
 
 #include "mtt/trie/xdr/types.h"
 
@@ -95,10 +96,9 @@ private:
 	friend children_map_t;
 
 	constexpr static uint8_t KEY_LEN_BYTES = 8;
-	static_assert(sizeof(AccountID) == 8, "invalid accountid len (bunch of stuff to fix if change)");
+	static_assert(KEY_LEN_BYTES == 8, "invalid keylen (bunch of stuff to fix if change)");
 
 	constexpr static uint8_t MAX_BRANCH_VALUE = 0xF;
-
 
 	constexpr static PrefixLenBits MAX_KEY_LEN_BITS = PrefixLenBits{KEY_LEN_BYTES * 8};
 
@@ -479,9 +479,9 @@ public:
 	}
 
 	template<typename InsertFn = OverwriteInsertFn<ValueType>, typename InsertedValueType = ValueType>
-	void insert(AccountID account, InsertedValueType&& value) {
+	void insert(uint64_t key, InsertedValueType&& value) {
 		auto& ref = allocation_context.get_object(root);
-		ref.template insert<InsertFn, InsertedValueType>(UInt64Prefix{account}, std::move(value), allocation_context);
+		ref.template insert<InsertFn, InsertedValueType>(UInt64Prefix{key}, std::move(value), allocation_context);
 	}
 
 	void log() {
@@ -1109,7 +1109,7 @@ AccountTrie<ValueType>::get_root_hash(Hash& out) {
 	std::array<unsigned char, buf_sz> buf;
 	buf.fill(0);
 
-	write_unsigned_big_endian(buf, sz);
+	utils::write_unsigned_big_endian(buf, sz);
 
 	if (sz > 0) {
 		root_obj.copy_hash_to_buf(buf.data() + 4);
@@ -1122,7 +1122,6 @@ AccountTrie<ValueType>::get_root_hash(Hash& out) {
 		throw std::runtime_error("crypto_generichash error");
 	}
 
-//	SHA256(buf.data(), buf.size(), root_hash.data());
 	validate_hash();
 
 	out = root_hash;

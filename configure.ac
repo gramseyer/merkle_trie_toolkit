@@ -3,9 +3,6 @@ AM_INIT_AUTOMAKE([subdir-objects])
 AC_CONFIG_SRCDIR([configure.ac])
 AC_CONFIG_MACRO_DIR([m4])
 
-dnl to build tests, configure with CXXFLAGS=${location of cxxtest headers},
-dnl which on my machine is -I/usr/local/include
-
 AC_PROG_CXX
 AC_LANG(C++)
 AX_APPEND_COMPILE_FLAGS([-pthread])

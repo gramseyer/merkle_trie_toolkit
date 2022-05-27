@@ -35,6 +35,7 @@ CLEANFILES = *~ */*~ */*/*~ .gitignore~
 #	include/mtt/trie/build_endian.h.in
 
 TEST_SRCS = \
+	tests/test_recycling_trie.cc \
 	tests/test_serialize.cc
 
 .x.h:
