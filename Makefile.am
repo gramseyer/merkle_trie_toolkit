@@ -2,8 +2,8 @@ ACLOCAL_AMFLAGS = -I m4
 
 SUBDIRS = $(PKGCONFIG_SUBDIRS) .
 
-AM_CPPFLAGS = $(xdrpp_CFLAGS)
-LDADD = $(xdrpp_LDFLAGS)
+AM_CPPFLAGS = $(xdrpp_CFLAGS) $(libsodium_CFLAGS) $(tbb_CFLAGS)
+LDADD = $(libsodium_LIBS) $(tbb_LIBS) $(xdrpp_LIBS)
 
 SUFFIXES = .x.h
 
@@ -35,10 +35,7 @@ CLEANFILES = *~ */*~ */*/*~ .gitignore~
 #	include/mtt/trie/build_endian.h.in
 
 TEST_SRCS = \
-	tests/test_prefix.h \
-	tests/test_merkle_trie.h \
-	tests/test_merkle_trie_metadata.h \
-	tests/test_recycling_trie.h
+	tests/test_serialize.cc
 
 .x.h:
 	$(XDRC)  -hh -o $@ $<
@@ -55,18 +52,13 @@ $(top_builddir)/tests/xdr/test_types.h : $(XDRC)
 #no idea but including this shorthand somehow screws up this configure script
 #XH_FILES = $(X_FILES:.x=.h)
 
-
-if MTT_BUILD_TESTS
-
-test_runner.cc : $(TEST_SRCS) $(X_FILES:.x=.h) $(TEST_X_FILES:.x=.h)
-	cxxtestgen --error-printer -o test_runner.cc $(TEST_SRCS)
-
-test_runner.o : CXXFLAGS += -I./include $(libsodium_CFLAGS) $(tbb_CFLAGS) $(xdrpp_CFLAGS)
+test.o : CXXFLAGS += $(Catch2_CFLAGS)
+$(TEST_SRCS:.cc=.o) : CXXFLAGS += $(Catch2_CFLAGS) -I./include
+test.o : $(XDRC)
 
 bin_PROGRAMS = test
 
-test_SOURCES = test_runner.cc
+test_SOURCES = test.cc $(TEST_SRCS)
 
-test_LDFLAGS = $(libsodium_LIBS) $(tbb_LIBS) $(xdrpp_LIBS)
+test_LDFLAGS = $(Catch2_LIBS)
 
-endif
