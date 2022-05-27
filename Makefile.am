@@ -35,6 +35,7 @@ CLEANFILES = *~ */*~ */*/*~ .gitignore~
 #	include/mtt/trie/build_endian.h.in
 
 TEST_SRCS = \
+	tests/test_prefix.cc \
 	tests/test_recycling_trie.cc \
 	tests/test_serialize.cc
 
@@ -56,6 +57,7 @@ $(top_builddir)/tests/xdr/test_types.h : $(XDRC)
 test.o : CXXFLAGS += $(Catch2_CFLAGS)
 $(TEST_SRCS:.cc=.o) : CXXFLAGS += $(Catch2_CFLAGS) -I./include
 test.o : $(XDRC)
+$(TEST_SRCS:.cc=.o) : $(TEST_X_FILES:.x=.h) $(X_FILES:.x=.h)
 
 bin_PROGRAMS = test
 

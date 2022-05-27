@@ -23,7 +23,7 @@ namespace trie
 
 using namespace utils;
 
-TEST_CASE("recycling trie emptyhash", "[recycling trie]")
+TEST_CASE("recycling trie emptyhash", "[recycling_trie]")
 {
 	AccountTrie<EmptyValue> trie;
 	Hash hash;
@@ -38,7 +38,7 @@ TEST_CASE("recycling trie emptyhash", "[recycling trie]")
 	REQUIRE(hash == hash2);
 }
 
-TEST_CASE("recycling trie emptyhash2", "[recycling trie]")
+TEST_CASE("recycling trie emptyhash2", "[recycling_trie]")
 {
 	AccountTrie<EmptyValue> trie;
 
