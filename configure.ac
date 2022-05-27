@@ -22,9 +22,7 @@ PKG_CHECK_MODULES([Catch2], [Catch2])
 export CXXFLAGS
 export CXX
 
-AC_MSG_CHECKING($XDRC)
-
-if test -z $XDRC; then
+if test -z $ALREADY_HAVE_XDRC; then
    AC_MSG_CHECKING(did not find xdrc already, looking locally)
    AX_PKGCONFIG_SUBDIR_NOCOND(xdrpp)
    AC_MSG_CHECKING(for xdrc)
@@ -33,6 +31,7 @@ if test -z $XDRC; then
           [XDRC='$(top_builddir)/xdrpp/xdrc/xdrc$(EXEEXT)'],
           [AC_PATH_PROG(XDRC, [xdrc])])
 else
+   XDRC=$ALREADY_HAVE_XDRC
    AC_MSG_CHECKING(already have xdrc)
 fi
 
