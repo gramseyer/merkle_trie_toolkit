@@ -7,6 +7,9 @@ LDADD = $(libsodium_LIBS) $(tbb_LIBS) $(xdrpp_LIBS)
 
 SUFFIXES = .x.h
 
+abs_top_builddir = @real_top_builddir@
+abs_top_srcdir = @real_top_builddir@
+
 #nodist_pkginclude_HEADERS = include/trie/build_endian.h
 
 # If we use AC_CONFIG_HEADERS([xdrpp/config.h]) in configure.ac, then

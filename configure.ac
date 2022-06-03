@@ -30,6 +30,7 @@ if test -z $ALREADY_HAVE_XDRC; then
           [test -n "$xdrpp_INTERNAL" -a x"$cross_compiling" != xyes],
           [XDRC='$(top_builddir)/xdrpp/xdrc/xdrc$(EXEEXT)'],
           [AC_PATH_PROG(XDRC, [xdrc])])
+   real_top_builddir=$PWD
 else
    XDRC=$ALREADY_HAVE_XDRC
    AC_MSG_CHECKING(already have xdrc)
@@ -42,6 +43,10 @@ if test -z "$XDRC"; then
 fi
 
 AC_MSG_RESULT($XDRC)
+
+AC_MSG_CHECKING($real_top_builddir)
+
+AC_SUBST([real_top_builddir])
 
 AC_CONFIG_HEADERS([config.h])
 AC_CONFIG_FILES([Makefile merkle_trie_toolkit.pc include/mtt/trie/build_endian.h merkle_trie_toolkit-uninstalled.pc])
