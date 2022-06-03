@@ -37,6 +37,7 @@ else
 fi
 
 AC_SUBST(XDRC)
+AC_SUBST(real_top_builddir)
 
 if test -z "$XDRC"; then
    AC_MSG_ERROR(Cannot find xdrc)
