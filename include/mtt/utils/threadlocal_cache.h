@@ -48,6 +48,8 @@ class ThreadlocalCache {
 
 public:
 
+	using cache_array_t = std::array<std::optional<ValueType>, CACHE_SIZE>;
+
 	ThreadlocalCache() : objects() {}
 
 	//! Get current thread's cached object.
