@@ -26,7 +26,7 @@ constexpr static auto load_order = std::memory_order_relaxed;//acquire;
 constexpr static auto store_order = std::memory_order_relaxed;//release;
 constexpr static auto load_store_order = std::memory_order_relaxed;//acq_rel;
 
-namespace {
+namespace detail {
 
 template<class T>
 concept Metadata_arithmetic
@@ -43,11 +43,11 @@ concept Metadata_clear
 	= requires(T self) {
 		self.clear();
 	};
-} /* anonymous namespace */
+} /* detail */
 
 template<class T>
 concept Metadata
-	 = Metadata_arithmetic<T>;
+	 = detail::Metadata_arithmetic<T>;
 
 
 
