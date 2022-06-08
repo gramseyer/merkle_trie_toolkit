@@ -7,7 +7,7 @@
 #include "mtt/trie/debug_macros.h"
 #include "mtt/trie/recycling_impl/trie.h"
 #include "mtt/trie/utils.h"
-#include "mtt/trie/xdr/types.h"
+#include "mtt/trie/types.h"
 
 #include "mtt/utils/serialize_endian.h"
 #include "mtt/utils/time.h"
@@ -15,8 +15,6 @@
 #include <sodium.h>
 
 #include <tbb/global_control.h>
-
-using xdr::operator==;
 
 namespace trie
 {
@@ -30,7 +28,7 @@ TEST_CASE("recycling trie emptyhash", "[recycling_trie]")
 
 	trie.hash(hash);
 
-	AccountTrie<XdrTypeWrapper<Hash>> trie2;
+	AccountTrie<XdrTypeWrapper<Hash, &trie::hash_serialize_fn>> trie2;
 
 	Hash hash2;
 	trie2.hash(hash2);

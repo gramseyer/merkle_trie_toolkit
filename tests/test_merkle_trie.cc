@@ -10,17 +10,14 @@
 #include "mtt/utils/serialize_endian.h"
 
 #include "tests/offer_metadata.h"
-#include "tests/xdr/test_types.h"
+#include "tests/test_types.h"
 
 #include <sodium.h>
 
 #include <iostream>
 
-
 using namespace trie;
 using namespace trie::test;
-
-using xdr::operator==;
 
 TEST_CASE("insert" , "[trie]")
 {
@@ -257,7 +254,7 @@ TEST_CASE("perform delete", "[trie]")
 
 TEST_CASE("split", "[trie]")
 {
-	using OfferWrapper = XdrTypeWrapper<Offer>;
+	using OfferWrapper = XdrTypeWrapper<Offer, &offer_serialize_fn>;
 
 	using TrieT = MerkleTrie<ByteArrayPrefix<2>, OfferWrapper, CombinedMetadata<OrderbookMetadata>>;
 
@@ -298,7 +295,7 @@ TEST_CASE("split", "[trie]")
 
 TEST_CASE("endow below threshold", "[trie]")
 {
-	using ValueT = XdrTypeWrapper<Offer>;
+	using ValueT = XdrTypeWrapper<Offer, &offer_serialize_fn>;
 
 	using TrieT = MerkleTrie<ByteArrayPrefix<2>, ValueT, CombinedMetadata<OrderbookMetadata>>;
 
@@ -311,7 +308,7 @@ TEST_CASE("endow below threshold", "[trie]")
 
 	for (uint16_t i = 0; i < 1000; i+=20) {
 		utils::write_unsigned_big_endian(buf, i);
-		trie.insert(buf, XdrTypeWrapper<Offer>(offer));
+		trie.insert(buf, XdrTypeWrapper<Offer, &offer_serialize_fn>(offer));
 	}
 	REQUIRE(50 == trie.size());
 
@@ -342,7 +339,7 @@ TEST_CASE("endow below threshold", "[trie]")
 
 TEST_CASE("empty hash", "[trie]")
 {
-	using ValueT = XdrTypeWrapper<Offer>;
+	using ValueT = XdrTypeWrapper<Offer, &offer_serialize_fn>;
 	using TrieT = MerkleTrie<ByteArrayPrefix<2>, ValueT, CombinedMetadata<OrderbookMetadata>>;
 
 

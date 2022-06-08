@@ -19,36 +19,6 @@ PKG_CHECK_MODULES([libsodium], [libsodium])
 PKG_CHECK_MODULES([tbb], [tbb])
 PKG_CHECK_MODULES([Catch2], [Catch2])
 
-export CXXFLAGS
-export CXX
-
-if test -z $ALREADY_HAVE_XDRC; then
-   AC_MSG_CHECKING(did not find xdrc already, looking locally)
-   AX_PKGCONFIG_SUBDIR_NOCOND(xdrpp)
-   AC_MSG_CHECKING(for xdrc)
-   AS_IF([test -n "$XDRC"],,
-          [test -n "$xdrpp_INTERNAL" -a x"$cross_compiling" != xyes],
-          [XDRC='$(top_builddir)/xdrpp/xdrc/xdrc$(EXEEXT)'],
-          [AC_PATH_PROG(XDRC, [xdrc])])
-   real_top_builddir=$PWD
-else
-   XDRC=$ALREADY_HAVE_XDRC
-   AC_MSG_CHECKING(already have xdrc)
-fi
-
-AC_SUBST(XDRC)
-AC_SUBST(real_top_builddir)
-
-if test -z "$XDRC"; then
-   AC_MSG_ERROR(Cannot find xdrc)
-fi
-
-AC_MSG_RESULT($XDRC)
-
-AC_MSG_CHECKING($real_top_builddir)
-
-AC_SUBST([real_top_builddir])
-
 AC_CONFIG_HEADERS([config.h])
 AC_CONFIG_FILES([Makefile merkle_trie_toolkit.pc include/mtt/trie/build_endian.h merkle_trie_toolkit-uninstalled.pc])
 AC_OUTPUT

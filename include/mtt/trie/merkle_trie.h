@@ -21,9 +21,9 @@ virtual addresses).
 
 #include "mtt/trie/debug_macros.h"
 
-#include "mtt/trie/xdr/types.h"
-
 #include "mtt/utils/serialize_endian.h"
+
+#include "mtt/trie/types.h"
 
 #include <sodium.h>
 

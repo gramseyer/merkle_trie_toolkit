@@ -4,8 +4,6 @@
 #include <iomanip>
 #include <sstream>
 
-#include "mtt/trie/xdr/types.h"
-
 /*! \file debug_macros.h
 
 A set of debugging macros.  Activate/deactivate based on DEBUG_LEVEL_* settings.
@@ -73,11 +71,6 @@ static std::string array_to_str(const unsigned char* array, const int len) {
 		s<< std::setw(2) << std::hex << (unsigned short)array[i];
 	}
 	return s.str();
-}
-
-[[maybe_unused]]
-static std::string hash_to_str(const trie::Hash& hash) {
-	return array_to_str(hash.data(), hash.size());
 }
 
 template<typename ArrayLike>

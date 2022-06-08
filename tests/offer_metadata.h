@@ -6,7 +6,7 @@
 
 #include "mtt/trie/metadata.h"
 
-#include "tests/xdr/test_types.h"
+#include "tests/test_types.h"
 
 namespace trie {
 namespace test {

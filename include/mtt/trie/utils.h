@@ -6,8 +6,6 @@
 #include <variant>
 #include <vector>
 
-#include <xdrpp/marshal.h>
-
 /*! \file utils.h 
 
 Miscellaneous classes used in trie management.
@@ -18,17 +16,17 @@ namespace trie {
 
 struct EmptyValue {
 
-	constexpr static uint16_t data_len()
-	{
-		return 0;
-	}
-
-	constexpr static void serialize() {}
-
 	constexpr static void copy_data(std::vector<uint8_t>& buf) {}
 };
 
-template<typename V>
+template<typename T>
+static 
+std::vector<uint8_t> no_serialization_fn(const T&)
+{
+	return {};
+}
+
+template<typename V, auto f = &no_serialization_fn<V>>
 struct PointerValue {
 	// for values that can't be moved
 	std::unique_ptr<V> v;
@@ -39,14 +37,38 @@ struct PointerValue {
 		: v(std::move(val))
 		{}
 
-	constexpr static uint16_t data_len()
-	{
-		return 0;
+	void copy_data(std::vector<uint8_t>& buf) const {
+		auto res = f(*v);
+		buf.insert(buf.end(), res.begin(), res.end());
+	}
+};
+
+template<typename xdr_type, auto serialize_fn>
+struct XdrTypeWrapper : public xdr_type {
+
+	XdrTypeWrapper() 
+		: xdr_type()
+		{}
+
+	XdrTypeWrapper(const xdr_type& x) 
+		: xdr_type(x)
+       	{}
+
+	XdrTypeWrapper& operator=(const XdrTypeWrapper& other) {
+		xdr_type::operator=(other);
+		return *this;
 	}
 
-	constexpr static void serialize() {}
+	XdrTypeWrapper(const XdrTypeWrapper& other)
+	: xdr_type()
+	{
+		xdr_type::operator=(other);
+	}
 
-	constexpr static void copy_data(std::vector<uint8_t>& buf) {}
+	void copy_data(std::vector<uint8_t>& buf) const {
+		auto serialization = serialize_fn(*this);//xdr::xdr_to_opaque(static_cast<xdr_type>(*this));
+		buf.insert(buf.end(), serialization.begin(), serialization.end());
+	}
 };
 
 //F is function to map prefix to KeyInterpretationType
@@ -144,39 +166,6 @@ struct RollbackInsertFn : public OverwriteInsertFn<ValueType> {
 struct NullOpDelSideEffectFn {
 	template<typename ...Args>
 	void operator() (const Args&... args) {}
-};
-
-
-template<typename xdr_type>
-struct XdrTypeWrapper : public xdr_type {
-
-	XdrTypeWrapper() 
-		: xdr_type()
-		{}
-	XdrTypeWrapper(const xdr_type& x) 
-		: xdr_type(x)
-       	{}
-
-	XdrTypeWrapper& operator=(const XdrTypeWrapper& other) {
-		xdr_type::operator=(other);
-		return *this;
-	}
-
-	XdrTypeWrapper(const XdrTypeWrapper& other)
-	: xdr_type()
-	{
-		xdr_type::operator=(other);
-	}
-
-	size_t data_len() const 
-	{
-		return xdr::xdr_size(static_cast<xdr_type>(*this));
-	}
-
-	void copy_data(std::vector<uint8_t>& buf) const {
-		auto serialization = xdr::xdr_to_opaque(static_cast<xdr_type>(*this));
-		buf.insert(buf.end(), serialization.begin(), serialization.end());
-	}
 };
 
 /*! Template class that optionally wraps a mutex.

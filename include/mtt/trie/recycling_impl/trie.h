@@ -22,7 +22,7 @@
 #include "mtt/utils/threadlocal_cache.h"
 #include "mtt/utils/serialize_endian.h"
 
-#include "mtt/trie/xdr/types.h"
+#include "mtt/trie/types.h"
 
 namespace trie {
 

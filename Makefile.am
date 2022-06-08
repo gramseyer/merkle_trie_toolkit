@@ -2,13 +2,13 @@ ACLOCAL_AMFLAGS = -I m4
 
 SUBDIRS = $(PKGCONFIG_SUBDIRS) .
 
-AM_CPPFLAGS = $(xdrpp_CFLAGS) $(libsodium_CFLAGS) $(tbb_CFLAGS)
-LDADD = $(libsodium_LIBS) $(tbb_LIBS) $(xdrpp_LIBS)
+AM_CPPFLAGS = $(libsodium_CFLAGS) $(tbb_CFLAGS)
+LDADD = $(libsodium_LIBS) $(tbb_LIBS)
 
-SUFFIXES = .x.h
+#SUFFIXES = .x.h
 
-abs_top_builddir = @real_top_builddir@
-abs_top_srcdir = @real_top_builddir@
+#abs_top_builddir = @real_top_builddir@
+#abs_top_srcdir = @real_top_builddir@
 
 #nodist_pkginclude_HEADERS = include/trie/build_endian.h
 
@@ -44,25 +44,26 @@ TEST_SRCS = \
 	tests/test_recycling_trie.cc \
 	tests/test_serialize.cc
 
-.x.h:
-	$(XDRC)  -hh -o $@ $<
+#.x.h:
+#	$(XDRC)  -hh -o $@ $<
 
-X_FILES = include/mtt/trie/xdr/types.x
+#X_FILES = include/mtt/trie/xdr/types.x
 
-TEST_X_FILES = tests/xdr/test_types.x
+#TEST_X_FILES = tests/xdr/test_types.x
 
-BUILT_SOURCES = include/mtt/trie/config.h $(X_FILES:.x=.h)
+BUILT_SOURCES = include/mtt/trie/config.h
+#$(X_FILES:.x=.h)
 
-$(top_builddir)/include/mtt/trie/xdr/types.h : $(XDRC)
-$(top_builddir)/tests/xdr/test_types.h : $(XDRC)
+#$(top_builddir)/include/mtt/trie/xdr/types.h : $(XDRC)
+#$(top_builddir)/tests/xdr/test_types.h : $(XDRC)
 
 #no idea but including this shorthand somehow screws up this configure script
 #XH_FILES = $(X_FILES:.x=.h)
 
 test.o : CXXFLAGS += $(Catch2_CFLAGS)
 $(TEST_SRCS:.cc=.o) : CXXFLAGS += $(Catch2_CFLAGS) -I./include
-test.o : $(XDRC)
-$(TEST_SRCS:.cc=.o) : $(TEST_X_FILES:.x=.h) $(X_FILES:.x=.h)
+#test.o : $(XDRC)
+#$(TEST_SRCS:.cc=.o) : $(TEST_X_FILES:.x=.h) $(X_FILES:.x=.h)
 
 bin_PROGRAMS = test
 
