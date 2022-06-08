@@ -16,13 +16,14 @@ This implementation stores a literal list of pointers.
 
 namespace trie {
 
-namespace {
+namespace detail {
 template<typename ptr_t>
 struct kv_pair_t {
 	uint8_t first;
 	ptr_t& second;
 };
-}
+
+} /* detail */
 
 /*! Stores the main contents of a trie node.  
 Main contents are either a list of pointers to valid child nodes
@@ -185,7 +186,7 @@ public:
 
 		ptr_t* map;
 
-		kv_pair_t<ptr_t> operator*() {
+		detail::kv_pair_t<ptr_t> operator*() {
 			uint8_t branch = bv.lowest();
 			return {branch, map[branch]};
 		}

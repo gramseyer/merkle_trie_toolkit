@@ -21,10 +21,10 @@ byte array, and one is specialized for accountid keys.
 
 namespace trie {
 
-namespace {
+namespace detail {
 inline static size_t num_prefix_bytes_(const unsigned int x){ 
 	return ((x/8) + (x % 8 == 0?0:1));
-}
+} /* detail */
 }
 
 /*! Typesafe way of storing the length of a key in bits.
@@ -35,7 +35,7 @@ struct PrefixLenBits {
 	uint16_t len;
 	//! Number of bytes needed to store len bits of a prefix.
 	size_t num_prefix_bytes() const{
-		return num_prefix_bytes_(len);
+		return detail::num_prefix_bytes_(len);
 	}
 
 	//! Number of bytes that are fully used by len bits.
@@ -60,7 +60,7 @@ struct PrefixLenBits {
 	}
 };
 
-namespace {
+namespace detail {
 template<class T>
 concept TriePrefix_get_prefix_match_len 
 	= requires(
@@ -96,13 +96,14 @@ concept TriePrefix_spaceship
 		a <=> b;
 		a == b;
 	};
-}
+} /* detail */
+
 //! Concept describing required methods for trie prefixes.
 template <class T>
-concept TriePrefix = TriePrefix_get_prefix_match_len<T>
-	&& TriePrefix_get_branch_bits<T>
-	&& TriePrefix_truncate<T>
-	&& TriePrefix_spaceship<T>
+concept TriePrefix = detail::TriePrefix_get_prefix_match_len<T>
+	&& detail::TriePrefix_get_branch_bits<T>
+	&& detail::TriePrefix_truncate<T>
+	&& detail::TriePrefix_spaceship<T>
 	&& requires {
 	{ T() };
 
