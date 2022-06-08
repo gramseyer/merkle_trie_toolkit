@@ -1634,7 +1634,7 @@ number of children [4bytes]
 hash of root node
 
 */
-namespace {
+namespace detail {
 
 template <typename ValueType, typename prefix_t>
 static void 
@@ -1791,7 +1791,7 @@ compute_hash_branch_node(
 	}
 }
 
-} /* anonymous namespace */
+} /* detail */
 
 /*! Computes hash of current node.
 
@@ -1815,9 +1815,9 @@ TrieNode<TEMPLATE_PARAMS>::compute_hash() {
 		auto& value = children.value();
 
 		(ApplyToValueBeforeHashFn::apply_to_value(value),...);
-		compute_hash_value_node(hash, prefix, prefix_len, value);
+		detail::compute_hash_value_node(hash, prefix, prefix_len, value);
 	} else {
-		compute_hash_branch_node<
+		detail::compute_hash_branch_node<
 			children_map_t,
 			bv_t,
 			METADATA_DELETABLE, 
