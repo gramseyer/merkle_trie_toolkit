@@ -7,7 +7,7 @@
 namespace utils {
 
 namespace detail {
-	using time_point = std::chrono::time_point<std::chrono::steady_clock>;
+	typedef std::chrono::time_point<std::chrono::steady_clock> time_point;
 } /* detail */
 
 //! \fn difference between two time measurements.

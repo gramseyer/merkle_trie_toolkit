@@ -26,7 +26,7 @@ std::vector<uint8_t> no_serialization_fn(const T&)
 	return {};
 }
 
-template<typename V, auto f = &no_serialization_fn<V>>
+template<typename V, auto f>
 struct PointerValue {
 	// for values that can't be moved
 	std::unique_ptr<V> v;

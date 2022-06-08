@@ -10,6 +10,7 @@ byte array, and one is specialized for accountid keys.
 #include <compare>
 #include <concepts>
 #include <cstdint>
+#include <cstring>
 #include <mutex>
 
 #include <tbb/blocked_range.h> // to get tbb::split
@@ -24,8 +25,9 @@ namespace trie {
 namespace detail {
 inline static size_t num_prefix_bytes_(const unsigned int x){ 
 	return ((x/8) + (x % 8 == 0?0:1));
+} 
+
 } /* detail */
-}
 
 /*! Typesafe way of storing the length of a key in bits.
 Too many bugs were caused by accidentaly bits/bytes unit conversions.
@@ -143,7 +145,7 @@ struct ByteArrayPrefix {
 
 			data.fill(0);
 			auto* ptr = reinterpret_cast<unsigned char*>(data.data());
-			memcpy(ptr, input.data(), MAX_LEN_BYTES);
+			std::memcpy(ptr, input.data(), MAX_LEN_BYTES);
 	}
 
 	//! Returns the number of bits that match between this and \a other,
@@ -266,7 +268,7 @@ struct ByteArrayPrefix {
 		const unsigned char* ptr 
 			= reinterpret_cast<const unsigned char*>(data.data());
 
-		memcpy(out.data(), ptr, MAX_LEN_BYTES);
+		std::memcpy(out.data(), ptr, MAX_LEN_BYTES);
 		return out;
 	}
 
@@ -293,7 +295,7 @@ struct ByteArrayPrefix {
 		if (len > MAX_LEN_BYTES) {
 			throw std::runtime_error("len is too long!");
 		}
-		memcpy(dst, src, len); 
+		std::memcpy(dst, src, len); 
 	}
 
 
