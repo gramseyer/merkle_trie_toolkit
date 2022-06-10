@@ -28,7 +28,7 @@ namespace trie {
 
 template<typename ValueType, typename NodeType>
 struct TrieNodeContents {
-	using prefix_t = UInt64Prefix;
+	using prefix_t = typename NodeType::prefix_t;
 	using children_map_t = AccountChildrenMap<ValueType, NodeType>;
 	using ptr_t = children_map_t::ptr_t;
 
@@ -53,7 +53,7 @@ struct PtrWrapper {
 	}
 };
 
-template<typename ValueType>
+template<typename ValueType, typename prefix_t>
 struct ApplyableSubnodeRef {
 	uint32_t ptr;
 	const AccountTrieNodeAllocator<ValueType>& allocator;
@@ -68,7 +68,8 @@ struct ApplyableSubnodeRef {
 		allocator.get_object(ptr).apply_to_keys(fn, allocator);
 	}
 
-	UInt64Prefix get_prefix() const {
+	prefix_t
+	get_prefix() const {
 		return allocator.get_object(ptr).get_prefix();
 	}
 
@@ -77,15 +78,15 @@ struct ApplyableSubnodeRef {
 	}
 };
 
-template<typename ValueType>
-class alignas(64) AccountTrieNode {
+template<typename ValueType, typename PrefixT>
+class alignas(64) RecyclingTrieNode {
 
 public:
-	using prefix_t = UInt64Prefix;
-	using children_map_t = AccountChildrenMap<ValueType, AccountTrieNode<ValueType>>;
+	using prefix_t = PrefixT;
+	using node_t = RecyclingTrieNode<ValueType, prefix_t>;
+	using children_map_t = AccountChildrenMap<ValueType, node_t>;
 	using ptr_t = children_map_t::ptr_t;
 	using hash_t = Hash;
-	using node_t = AccountTrieNode<ValueType>;
 	using allocation_context_t = AllocationContext<node_t>;
 	using contents_t = TrieNodeContents<ValueType, node_t>;
 	using allocator_t = AccountTrieNodeAllocator<node_t>;
@@ -95,14 +96,16 @@ private:
 
 	friend children_map_t;
 
-	constexpr static uint8_t KEY_LEN_BYTES = 8;
-	static_assert(KEY_LEN_BYTES == 8, "invalid keylen (bunch of stuff to fix if change)");
+	constexpr static uint8_t KEY_LEN_BYTES = PrefixT::size_bytes();
+	//static_assert(KEY_LEN_BYTES == 8, "invalid keylen (bunch of stuff to fix if change)");
 
 	constexpr static uint8_t MAX_BRANCH_VALUE = 0xF;
 
 	constexpr static PrefixLenBits MAX_KEY_LEN_BITS = PrefixLenBits{KEY_LEN_BYTES * 8};
 
 	// should all fit in 1 cache line
+
+	hash_t hash; // 32
 
 	children_map_t children; // 9 bytes
 
@@ -115,9 +118,8 @@ private:
 
 	prefix_t prefix; // 8
 
-	hash_t hash; // 32
 
-	void set_to(AccountTrieNode& other, ptr_t this_ptr) {
+	void set_to(node_t& other, ptr_t this_ptr) {
 		auto lock = other.lock();
 		children = std::move(other.children);
 		prefix = other.prefix;
@@ -162,7 +164,6 @@ private:
 public:
 
 	void print_offsets() {
-		using node_t = AccountTrieNode<ValueType>;
 		std::printf("children: start %lu end %lu\n", offsetof(node_t, children), offsetof(node_t, children) + sizeof(children));
 		std::printf("hash_valid: start %lu end %lu\n", offsetof(node_t, hash_valid), offsetof(node_t, hash_valid) + sizeof(hash_valid));
 		std::printf("prefix_len: start %lu end %lu\n", offsetof(node_t, prefix_len), offsetof(node_t, prefix_len) + sizeof(prefix_len));
@@ -203,7 +204,7 @@ public:
 	}
 
 	//for creating empty node
-	AccountTrieNode() 
+	RecyclingTrieNode() 
 		: children()
 		, prefix_len(0)
 		, prefix(0)
@@ -357,7 +358,7 @@ public:
 	std::tuple<bool, int32_t, PtrWrapper>
 	destructive_steal_child(const prefix_t stealing_prefix, const PrefixLenBits stealing_prefix_len, allocation_context_t& allocator);
 
-	void propagate_sz_delta(AccountTrieNode<ValueType>* target, int32_t delta, const allocator_t& allocator) {
+	void propagate_sz_delta(node_t* target, int32_t delta, const allocator_t& allocator) {
 
 		invalidate_hash();
 		if (target == this) {
@@ -428,32 +429,34 @@ public:
 
 
 
-template<typename ValueType>
-class AccountTrie;
+template<typename ValueType, typename PrefixT>
+class RecyclingTrie;
 
 
-template<typename ValueType>
-class SerialAccountTrie {
-	using node_t = AccountTrieNode<ValueType>;
+template<typename ValueType, typename PrefixT>
+class SerialRecyclingTrie {
+	using node_t = RecyclingTrieNode<ValueType, PrefixT>;
 	AllocationContext<node_t> allocation_context;
 	using ptr_t = node_t::ptr_t;
 	ptr_t root;
 
-	friend class AccountTrie<ValueType>;
+	using main_trie_t = RecyclingTrie<ValueType, PrefixT>;
 
-	static_assert(sizeof(node_t) <= 64, "account trie node should be at most 1 cache line");
+	friend main_trie_t;
+
+	//static_assert(sizeof(node_t) <= 64, "account trie node should be at most 1 cache line");
 
 
 public:
 
-	SerialAccountTrie(AccountTrieNodeAllocator<node_t>& allocator) 
+	SerialRecyclingTrie(AccountTrieNodeAllocator<node_t>& allocator) 
 		: allocation_context(allocator.get_new_allocator())
 		, root(UINT32_MAX) {
 			acquire_new_root();
 	}
 
-	SerialAccountTrie(AccountTrie<ValueType>& main_trie) 
-		: SerialAccountTrie(main_trie.get_allocator()) {}
+	SerialRecyclingTrie(main_trie_t& main_trie) 
+		: SerialRecyclingTrie(main_trie.get_allocator()) {}
 
 	void clear() {
 		root = UINT32_MAX;
@@ -505,19 +508,19 @@ struct AccountBatchMergeReduction;
 template<typename TrieT>
 struct AccountBatchMergeRange;
 
-template<typename ValueType>
-class AccountTrie {
+template<typename ValueType, typename PrefixT = UInt64Prefix>
+class RecyclingTrie {
 
 
 public:
-	using node_t = AccountTrieNode<ValueType>;
+	using node_t = RecyclingTrieNode<ValueType, PrefixT>;
 	using ptr_t = node_t::ptr_t;
-	using serial_trie_t = SerialAccountTrie<ValueType>;
+	using serial_trie_t = SerialRecyclingTrie<ValueType, PrefixT>;
 private:
 
 	AccountTrieNodeAllocator<node_t> allocator;
 
-	friend class SerialAccountTrie<ValueType>;
+	friend serial_trie_t;//class SerialRecyclingTrie<ValueType>;
 
 	AccountTrieNodeAllocator<node_t>& get_allocator() {
 		return allocator;
@@ -563,7 +566,7 @@ private:
 	}
 
 public:
-	AccountTrie() {
+	RecyclingTrie() {
 		if (sodium_init() == -1) {
 			throw std::runtime_error("Sodium init failed!!!");
 		}
@@ -587,8 +590,6 @@ public:
 		}
 		return allocator.get_object(root).size();
 	}
-
-
 
 	template<typename VectorType>
 	VectorType accumulate_values_parallel() const;
@@ -678,15 +679,20 @@ public:
 
 };
 
-template<typename ValueType>
-int32_t AccountTrieNode<ValueType>::size() const {
+#define ATN_TEMPLATE template<typename ValueType, typename PrefixT>
+#define ATN_DECL RecyclingTrieNode<ValueType, PrefixT>
+#define RecyclingTrie_DECL RecyclingTrie<ValueType, PrefixT>
+
+ATN_TEMPLATE
+int32_t 
+ATN_DECL ::size() const {
 	return size_.load(std::memory_order_relaxed);
 }
 
-template<typename ValueType>
+ATN_TEMPLATE
 template<typename InsertFn, typename InsertedValueType>
 int32_t 
-AccountTrieNode<ValueType>::insert(prefix_t key, InsertedValueType&& leaf_value, allocation_context_t& allocator) {
+ATN_DECL::insert(prefix_t key, InsertedValueType&& leaf_value, allocation_context_t& allocator) {
 
 	invalidate_hash();
 
@@ -851,10 +857,10 @@ compute_hash_branch_node_v2(
 	
 }
 
-template<typename ValueType>
+ATN_TEMPLATE
 template<typename... ApplyToValueBeforeHashFn>
 void 
-AccountTrieNode<ValueType>::compute_hash(const allocator_t& allocator, std::vector<unsigned char>& digest_bytes) {
+ATN_DECL::compute_hash(const allocator_t& allocator, std::vector<unsigned char>& digest_bytes) {
 	auto hash_is_valid = get_hash_valid();
 
 	if (hash_is_valid) return;
@@ -871,10 +877,10 @@ AccountTrieNode<ValueType>::compute_hash(const allocator_t& allocator, std::vect
 	validate_hash();
 }
 
-template<typename ValueType>
+ATN_TEMPLATE
 template<typename MergeFn>
 int32_t 
-AccountTrieNode<ValueType>::merge_in(ptr_t node, allocation_context_t& allocator) {
+ATN_DECL::merge_in(ptr_t node, allocation_context_t& allocator) {
 
 	auto lock_guard = lock();
 	invalidate_hash();
@@ -1049,12 +1055,12 @@ AccountTrieNode<ValueType>::merge_in(ptr_t node, allocation_context_t& allocator
 
 
 
-//AccountTrie
+//RecyclingTrie
 
-template<typename ValueType>
+ATN_TEMPLATE
 template<typename... ApplyFn>
 void 
-AccountTrie<ValueType>::hash(Hash& output_hash) {
+RecyclingTrie_DECL::hash(Hash& output_hash) {
 	std::lock_guard lock(mtx);
 
 	constexpr static size_t default_digest_buffer_sz = 16 * 32 + 32; // actually its 16 * 32 + 14, but this rounds up just a bit in case its necessary
@@ -1094,9 +1100,9 @@ AccountTrie<ValueType>::hash(Hash& output_hash) {
 
 }
 
-template<typename ValueType>
+ATN_TEMPLATE
 void 
-AccountTrie<ValueType>::get_root_hash(Hash& out) {
+RecyclingTrie_DECL ::get_root_hash(Hash& out) {
 
 	if (root == UINT32_MAX) {
 		throw std::runtime_error("can't hash null root!");
@@ -1127,19 +1133,19 @@ AccountTrie<ValueType>::get_root_hash(Hash& out) {
 	out = root_hash;
 }
 
-template<typename ValueType>
+ATN_TEMPLATE
 template<typename VectorType>
 VectorType
-AccountTrie<ValueType>::accumulate_values_parallel() const {
+RecyclingTrie_DECL::accumulate_values_parallel() const {
 	VectorType output;
 	accumulate_values_parallel(output);
 	return output;
 } 
 
-template<typename ValueType>
+ATN_TEMPLATE
 template<typename VectorType>
 void  
-AccountTrie<ValueType>::accumulate_values_parallel(VectorType& output) const {
+RecyclingTrie_DECL ::accumulate_values_parallel(VectorType& output) const {
 
 	std::lock_guard lock(mtx);
 
@@ -1160,10 +1166,10 @@ AccountTrie<ValueType>::accumulate_values_parallel(VectorType& output) const {
 			}
 		});
 }
-template<typename ValueType>
+ATN_TEMPLATE
 template<typename VectorType>
 void  
-AccountTrie<ValueType>::accumulate_keys_parallel(VectorType& output) const {
+RecyclingTrie_DECL::accumulate_keys_parallel(VectorType& output) const {
 
 	std::lock_guard lock(mtx);
 
@@ -1186,10 +1192,10 @@ AccountTrie<ValueType>::accumulate_keys_parallel(VectorType& output) const {
 }
 
 
-template<typename ValueType>
+ATN_TEMPLATE
 template<typename VectorType>
 void 
-AccountTrieNode<ValueType>::accumulate_values_parallel_worker(VectorType& output, size_t vector_offset, const allocator_t& allocator) const {
+ATN_DECL ::accumulate_values_parallel_worker(VectorType& output, size_t vector_offset, const allocator_t& allocator) const {
 	if (prefix_len == MAX_KEY_LEN_BITS) {
 		output[vector_offset] = children.value(allocator);
 		return;
@@ -1202,10 +1208,10 @@ AccountTrieNode<ValueType>::accumulate_values_parallel_worker(VectorType& output
 	}
 }
 
-template<typename ValueType>
+ATN_TEMPLATE
 template<typename VectorType>
 void 
-AccountTrieNode<ValueType>::accumulate_keys_parallel_worker(VectorType& output, size_t vector_offset, const allocator_t& allocator) const {
+ATN_DECL ::accumulate_keys_parallel_worker(VectorType& output, size_t vector_offset, const allocator_t& allocator) const {
 	if (prefix_len == MAX_KEY_LEN_BITS) {
 		output[vector_offset] = prefix.uint64();
 		return;
@@ -1218,9 +1224,9 @@ AccountTrieNode<ValueType>::accumulate_keys_parallel_worker(VectorType& output, 
 	}
 }
 
-template<typename ValueType>
+ATN_TEMPLATE
 std::tuple<bool, int32_t, PtrWrapper>
-AccountTrieNode<ValueType>::destructive_steal_child(const prefix_t stealing_prefix, const PrefixLenBits stealing_prefix_len, allocation_context_t& allocator) {
+ATN_DECL::destructive_steal_child(const prefix_t stealing_prefix, const PrefixLenBits stealing_prefix_len, allocation_context_t& allocator) {
 	auto lk = lock();
 
 	auto prefix_match_len = get_prefix_match_len(stealing_prefix, stealing_prefix_len);
@@ -1262,5 +1268,8 @@ AccountTrieNode<ValueType>::destructive_steal_child(const prefix_t stealing_pref
 
 	return {false, 0, PtrWrapper::make_nullptr()};
 }
+
+#undef ATN_TEMPLATE
+#undef ATN_DECL
 
 } /* trie */

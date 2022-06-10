@@ -23,12 +23,12 @@ using namespace utils;
 
 TEST_CASE("recycling trie emptyhash", "[recycling_trie]")
 {
-	AccountTrie<EmptyValue> trie;
+	RecyclingTrie<EmptyValue> trie;
 	Hash hash;
 
 	trie.hash(hash);
 
-	AccountTrie<XdrTypeWrapper<Hash, &trie::hash_serialize_fn>> trie2;
+	RecyclingTrie<XdrTypeWrapper<Hash, &trie::hash_serialize_fn>> trie2;
 
 	Hash hash2;
 	trie2.hash(hash2);
@@ -38,12 +38,12 @@ TEST_CASE("recycling trie emptyhash", "[recycling_trie]")
 
 TEST_CASE("recycling trie emptyhash2", "[recycling_trie]")
 {
-	AccountTrie<EmptyValue> trie;
+	RecyclingTrie<EmptyValue> trie;
 
 	Hash h1;
 	trie.hash(h1);
 
-	SerialAccountTrie<EmptyValue> serial_trie = trie.open_serial_subsidiary();
+	auto serial_trie = trie.open_serial_subsidiary();
 
 	trie.merge_in(serial_trie);
 
@@ -55,7 +55,7 @@ TEST_CASE("recycling trie emptyhash2", "[recycling_trie]")
 
 TEST_CASE("batch merge", "[.perf]")
 {		
-	using trie_t = AccountTrie<EmptyValue>;
+	using trie_t = RecyclingTrie<EmptyValue>;
 
 	using serial_trie_t = trie_t::serial_trie_t;
 	using serial_cache_t = utils::ThreadlocalCache<serial_trie_t>;

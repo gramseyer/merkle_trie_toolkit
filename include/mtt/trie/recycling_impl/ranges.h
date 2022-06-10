@@ -221,16 +221,16 @@ struct AccountApplyRange {
 	}
 };
 
-template<typename ValueType>
-class SerialAccountTrie;
+template<typename ValueType, typename PrefixT>
+class SerialRecyclingTrie;
 
 template<typename TrieT>
 struct AccountBatchMergeRange {
 	using ptr_t = TrieT::ptr_t;
 	using map_value_t = std::vector<ptr_t>;
 	using allocator_t = AccountTrieNodeAllocator<TrieT>;
-	using context_cache_t = utils::ThreadlocalCache<SerialAccountTrie<typename TrieT::value_t>>;
 	using prefix_t = TrieT::prefix_t;
+	using context_cache_t = utils::ThreadlocalCache<SerialRecyclingTrie<typename TrieT::value_t, prefix_t>>;
 	
 	allocator_t& allocator;
 	context_cache_t& cache;
