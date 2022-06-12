@@ -64,7 +64,7 @@ TEST_CASE("recycling trie with metadata : insert metadata ok", "[recycling_trie]
 	for (int32_t i = 0; i < 1'000; i++)
 	{
 		int32_t val = i;
-		serial_trie.insert(static_cast<uint64_t>(i * 1057), std::move(val));
+		serial_trie.insert(static_cast<uint64_t>((i * 1057) % 10000), std::move(val));
 	}
 
 	trie.merge_in(serial_trie);
@@ -72,6 +72,30 @@ TEST_CASE("recycling trie with metadata : insert metadata ok", "[recycling_trie]
 	auto meta = trie.metadata();
 
 	REQUIRE(meta.value_acc == (999 * 1000) / 2);
+}
+
+TEST_CASE("recycling trie with metadata : merge metadata ok", "[recycling_trie]")
+{
+	RecyclingTrie<int32_t, UInt64Prefix, test::RecyclingMetadata> trie;
+
+
+	for (int32_t batch = 0; batch < 5; batch++)
+	{
+		auto serial_trie = trie.open_serial_subsidiary();
+
+		for (int32_t i = 0; i < 1'000; i++)
+		{
+			int32_t val = i;
+			// test requires there's no collisions on this formula
+			serial_trie.insert(static_cast<uint64_t>((i + (batch * 1000)) * 1057 % 100000), std::move(val));
+		}
+
+		trie.merge_in(serial_trie);
+
+		auto meta = trie.metadata();
+
+		REQUIRE(meta.value_acc == (batch + 1) * (999 * 1000) / 2);
+	}
 }
 
 TEST_CASE("batch merge", "[.perf]")
