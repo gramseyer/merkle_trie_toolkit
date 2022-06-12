@@ -72,6 +72,9 @@ TEST_CASE("recycling trie with metadata : insert metadata ok", "[recycling_trie]
 	auto meta = trie.metadata();
 
 	REQUIRE(meta.value_acc == (999 * 1000) / 2);
+
+	trie.test_metadata_integrity_check();
+
 }
 
 TEST_CASE("recycling trie with metadata : merge metadata ok", "[recycling_trie]")
@@ -95,6 +98,8 @@ TEST_CASE("recycling trie with metadata : merge metadata ok", "[recycling_trie]"
 		auto meta = trie.metadata();
 
 		REQUIRE(meta.value_acc == (batch + 1) * (999 * 1000) / 2);
+
+		trie.test_metadata_integrity_check();
 	}
 }
 

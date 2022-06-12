@@ -11,6 +11,9 @@ struct RecyclingMetadata
 {
 	int32_t value_acc = 0;
 
+
+	bool operator==(const RecyclingMetadata& other) const = default;
+
 	RecyclingMetadata& 
 	operator+=(const RecyclingMetadata& other)
 	{

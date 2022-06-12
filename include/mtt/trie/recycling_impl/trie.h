@@ -456,6 +456,27 @@ public:
 			child.apply_to_keys(fn, allocator);
 		}
 	}
+
+	/* test */
+
+	metadata_t
+	test_metadata_integrity_check(const allocator_t& allocator) const
+	{
+		if (prefix_len == MAX_KEY_LEN_BITS)
+		{
+			return metadata;
+		}
+		metadata_t meta_acc = metadata_t::zero();
+		for (auto iter = children.begin(); iter != children.end(); iter++)
+		{
+			meta_acc += allocator.get_object((*iter).second).get_metadata();
+		}
+		if (meta_acc != metadata)
+		{
+			throw std::runtime_error("metadata_mismatch");
+		}
+		return metadata;
+	}
 };
 
 template<typename ValueType, typename PrefixT, typename ExtraMetadata>
@@ -711,6 +732,18 @@ public:
 		auto& ref = allocator.get_object(root);
 		ref.log("", allocator);
 	}
+
+	void test_metadata_integrity_check() const
+	{
+		std::lock_guard lock(mtx);
+		if (root == UINT32_MAX)
+		{
+			return;
+		}
+		auto const& ref = allocator.get_object(root);
+		ref.test_metadata_integrity_check(allocator);
+	}
+
 };
 
 #define ATN_TEMPLATE template<typename ValueType, typename PrefixT, typename ExtraMetadata>

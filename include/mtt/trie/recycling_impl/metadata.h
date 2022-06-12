@@ -27,6 +27,8 @@ struct RecyclingTrieNodeMetadata
 	int32_t size_ = 0;
 	ExtraMetadata metadata;
 
+	bool operator==(const RecyclingTrieNodeMetadata& other) const = default;
+
 	RecyclingTrieNodeMetadata& 
 	operator+=(const RecyclingTrieNodeMetadata& other)
 	{
