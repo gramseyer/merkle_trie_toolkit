@@ -40,11 +40,12 @@ struct RecyclingTrieNodeMetadata
 		RecyclingTrieNodeMetadata const& rhs)
 	{
 		lhs.size_ -= rhs.size_;
-		lhs.metadata -= rhs.metadata;
+		lhs.metadata += (-rhs.metadata);
 		return lhs;
 	}
 
-	RecyclingTrieNodeMetadata operator-()
+	RecyclingTrieNodeMetadata 
+	operator-() const
 	{
 		return RecyclingTrieNodeMetadata
 		{

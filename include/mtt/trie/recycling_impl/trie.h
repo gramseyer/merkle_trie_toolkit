@@ -272,6 +272,11 @@ public:
 
 	int32_t size() const;
 
+	metadata_t get_metadata() const
+	{
+		return metadata;
+	}
+
 	void set_metadata(metadata_t m)
 	{
 		metadata = m;
@@ -537,6 +542,7 @@ public:
 	using node_t = RecyclingTrieNode<ValueType, PrefixT, ExtraMetadata>;
 	using ptr_t = node_t::ptr_t;
 	using serial_trie_t = SerialRecyclingTrie<ValueType, PrefixT, ExtraMetadata>;
+	using metadata_t = RecyclingTrieNodeMetadata<ExtraMetadata>;
 private:
 
 	AccountTrieNodeAllocator<node_t> allocator;
@@ -612,6 +618,16 @@ public:
 			return 0;
 		}
 		return allocator.get_object(root).size();
+	}
+
+	ExtraMetadata metadata() const
+	{
+		std::lock_guard lock(mtx);
+		if (root == UINT32_MAX)
+		{
+			return ExtraMetadata::zero();
+		}
+		return allocator.get_object(root).get_metadata().metadata;
 	}
 
 	template<typename VectorType>
