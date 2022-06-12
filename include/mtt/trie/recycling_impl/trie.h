@@ -18,15 +18,24 @@
 #include "mtt/trie/recycling_impl/allocator.h"
 #include "mtt/trie/recycling_impl/ranges.h"
 #include "mtt/trie/recycling_impl/children_map.h"
+#include "mtt/trie/recycling_impl/metadata.h"
 
 #include "mtt/utils/threadlocal_cache.h"
 #include "mtt/utils/serialize_endian.h"
 
 #include "mtt/trie/types.h"
 
+/* TODO add metadata to this
+
+ Turns out that for this particular trie setup,
+ we don't need metadata to be atomic
+ because every time we update it
+ we have a lock (the spinlock) on it
+*/
+
 namespace trie {
 
-template<typename ValueType, typename NodeType>
+template<typename ValueType, typename NodeType, typename MetadataT>
 struct TrieNodeContents {
 	using prefix_t = typename NodeType::prefix_t;
 	using children_map_t = AccountChildrenMap<ValueType, NodeType>;
@@ -35,7 +44,8 @@ struct TrieNodeContents {
 	children_map_t children;
 	prefix_t prefix;
 	PrefixLenBits prefix_len;
-	int32_t size;
+	//int32_t size;
+	MetadataT metadata;
 };
 
 struct PtrWrapper {
@@ -78,19 +88,25 @@ struct ApplyableSubnodeRef {
 	}
 };
 
-template<typename ValueType, typename PrefixT>
+template<typename ValueType, typename PrefixT, typename ExtraMetadata>
+class RecyclingTrie;
+
+template<typename ValueType, typename PrefixT, typename ExtraMetadata>
 class alignas(64) RecyclingTrieNode {
 
 public:
 	using prefix_t = PrefixT;
-	using node_t = RecyclingTrieNode<ValueType, prefix_t>;
+	using node_t = RecyclingTrieNode<ValueType, prefix_t, ExtraMetadata>;
 	using children_map_t = AccountChildrenMap<ValueType, node_t>;
 	using ptr_t = children_map_t::ptr_t;
 	using hash_t = Hash;
 	using allocation_context_t = AllocationContext<node_t>;
-	using contents_t = TrieNodeContents<ValueType, node_t>;
+	using metadata_t = RecyclingTrieNodeMetadata<ExtraMetadata>;
+	using contents_t = TrieNodeContents<ValueType, node_t, metadata_t>;
 	using allocator_t = AccountTrieNodeAllocator<node_t>;
 	using value_t = ValueType;
+	using main_trie_t = RecyclingTrie<ValueType, PrefixT, ExtraMetadata>;
+
 	constexpr static uint8_t BRANCH_BITS = 4;
 private:
 
@@ -114,7 +130,8 @@ private:
 	
 	PrefixLenBits prefix_len; // 2, could be made 1
 
-	std::atomic<int32_t> size_ = 0; // 4	
+	metadata_t metadata;
+	//std::atomic<int32_t> size_ = 0; // 4	
 
 	prefix_t prefix; // 8
 
@@ -125,7 +142,9 @@ private:
 		prefix = other.prefix;
 		prefix_len = other.prefix_len;
 		hash_valid.store(other.hash_valid.load(std::memory_order_relaxed), std::memory_order_relaxed);
-		size_.store(other.size_.load(std::memory_order_relaxed), std::memory_order_relaxed);
+		
+		metadata = other.metadata;
+		//size_.store(other.size_.load(std::memory_order_relaxed), std::memory_order_relaxed);
 
 		if (other.get_hash_valid()) {
 			hash = other.hash;
@@ -147,7 +166,8 @@ private:
 			.children = std::move(children),
 			.prefix = prefix,
 			.prefix_len = prefix_len,
-			.size = size()
+			.metadata = metadata
+			//.size = size()
 		};
 	}
 
@@ -155,11 +175,10 @@ private:
 		children = std::move(contents.children);
 		prefix = contents.prefix;
 		prefix_len = contents.prefix_len;
-		set_size(contents.size);
+		set_metadata(contents.metadata);
+		//set_size(contents.size);
 		invalidate_hash();
 	}
-
-
 
 public:
 
@@ -167,40 +186,53 @@ public:
 		std::printf("children: start %lu end %lu\n", offsetof(node_t, children), offsetof(node_t, children) + sizeof(children));
 		std::printf("hash_valid: start %lu end %lu\n", offsetof(node_t, hash_valid), offsetof(node_t, hash_valid) + sizeof(hash_valid));
 		std::printf("prefix_len: start %lu end %lu\n", offsetof(node_t, prefix_len), offsetof(node_t, prefix_len) + sizeof(prefix_len));
-		std::printf("size_: start %lu end %lu\n", offsetof(node_t, size_), offsetof(node_t, size_) + sizeof(size_));
+		std::printf("metadata: start %lu end %lu\n", offsetof(node_t, metadata), offsetof(node_t, metadata) + sizeof(metadata));
 		std::printf("mtx: start %lu end %lu\n", offsetof(node_t, mtx), offsetof(node_t, mtx) + sizeof(mtx));
 		std::printf("prefix: start %lu end %lu\n", offsetof(node_t, prefix), offsetof(node_t, prefix) + sizeof(prefix));
 		std::printf("hash: start %lu end %lu\n", offsetof(node_t, hash), offsetof(node_t, hash) + sizeof(hash));
 		children.print_offsets();
-
 	}
 
 	template<typename InsertFn, typename InsertedValueType>
-	void set_as_value_leaf(
+	metadata_t
+	__attribute__((warn_unused_result))
+	set_as_value_leaf(
 		const prefix_t key, 
 		typename std::enable_if<std::is_same<ValueType, InsertedValueType>::value, InsertedValueType&&>::type value,
 		allocation_context_t& allocator) {
+		
+		auto metadata = metadata_t::from_value(value);
+
+		set_metadata(metadata);
 
 		children.set_value(allocator, std::move(value));
 		prefix = key;
 		prefix_len = MAX_KEY_LEN_BITS;
-		set_size(1);
+		//set_size(1);
 		invalidate_hash();
+		return metadata;
 	}
 
 	template<typename InsertFn, typename InsertedValueType>
-	void set_as_value_leaf(
+	metadata_t
+	__attribute__((warn_unused_result))
+	set_as_value_leaf(
 		const prefix_t key, 
 		typename std::enable_if<!std::is_same<ValueType, InsertedValueType>::value, InsertedValueType&&>::type value,
 		allocation_context_t& allocator) {
 		ValueType value_out = InsertFn::new_value(key);
 		InsertFn::value_insert(value_out, std::move(value));
 
+		auto metadata = metadata_t::from_value(value_out);
+
+		set_metadata(metadata);
+
 		children.set_value(allocator, std::move(value_out));
 		prefix = key;
 		prefix_len = MAX_KEY_LEN_BITS;
-		set_size(1);
+		//set_size(1);
 		invalidate_hash();
+		return metadata;
 	}
 
 	//for creating empty node
@@ -209,14 +241,18 @@ public:
 		, prefix_len(0)
 		, prefix(0)
 		{
-			set_size(0);
+			set_metadata(metadata_t::zero());
+
+			//set_size(0);
 		}
 
 	void set_as_empty_node() {
 		children.clear();
 		prefix_len = PrefixLenBits{0};
 		prefix = prefix_t{0};
-		set_size(0);
+		set_metadata(metadata_t::zero());
+
+		//set_size(0);
 		invalidate_hash();
 	}
 
@@ -224,23 +260,34 @@ public:
 		children_map_t&& old_children,
 		const prefix_t old_prefix,
 		const PrefixLenBits old_prefix_len,
-		int32_t old_size) {
+		metadata_t old_metadata) {
 
 		children = std::move(old_children);
 		prefix = old_prefix;
 		prefix_len = old_prefix_len;
-		set_size(old_size);
+		set_metadata(old_metadata);
+		//set_size(old_size);
 		invalidate_hash();
 	}
 
 	int32_t size() const;
 
-	void set_size(int32_t sz) {
+	void set_metadata(metadata_t m)
+	{
+		metadata = m;
+	}
+
+	void alter_metadata(metadata_t delta)
+	{
+		metadata += delta;
+	}
+
+	/*void set_size(int32_t sz) {
 		size_.store(sz, std::memory_order_relaxed);
 	}
 	void alter_size(int32_t delta) {
 		size_.fetch_add(delta, std::memory_order_relaxed);
-	}
+	} */
 
 	const PrefixLenBits get_prefix_len() const {
 		return prefix_len;
@@ -277,7 +324,7 @@ public:
 
 	//not threadsafe
 	template<typename InsertFn, typename InsertedValueType>
-	int32_t insert(prefix_t key, InsertedValueType&& leaf_value, allocation_context_t& allocator);
+	metadata_t insert(prefix_t key, InsertedValueType&& leaf_value, allocation_context_t& allocator);
 
 	//not threadsafe
 	template<typename... ApplyToValueBeforeHashFn>
@@ -285,7 +332,7 @@ public:
 
 	//threadsafe
 	template<typename MergeFn>
-	int32_t merge_in(ptr_t node, allocation_context_t& allocator);
+	metadata_t merge_in(ptr_t node, allocation_context_t& allocator);
 
 	SpinLockGuard lock() const {
 		return SpinLockGuard(mtx);
@@ -355,10 +402,10 @@ public:
 	void accumulate_keys_parallel_worker(VectorType& output, size_t vector_offset, const allocator_t& allocator) const;
 
 
-	std::tuple<bool, int32_t, PtrWrapper>
-	destructive_steal_child(const prefix_t stealing_prefix, const PrefixLenBits stealing_prefix_len, allocation_context_t& allocator);
+	std::tuple<bool, metadata_t, PtrWrapper>
+	destructive_steal_child(const prefix_t& stealing_prefix, const PrefixLenBits stealing_prefix_len, allocation_context_t& allocator);
 
-	void propagate_sz_delta(node_t* target, int32_t delta, const allocator_t& allocator) {
+	void propagate_sz_delta(node_t* target, metadata_t delta, const allocator_t& allocator) {
 
 		invalidate_hash();
 		if (target == this) {
@@ -374,7 +421,8 @@ public:
 			throw std::runtime_error("can't propagate metadata to nonexistent node (recycling impl)");
 		}
 
-		alter_size(delta);
+		alter_metadata(delta);
+		//alter_size(delta);
 
 		allocator.get_object((*iter).second).propagate_sz_delta(target, delta, allocator);
 	}
@@ -403,44 +451,16 @@ public:
 			child.apply_to_keys(fn, allocator);
 		}
 	}
-
-	void sz_check(const allocator_t& allocator) {
-		if (prefix_len == MAX_KEY_LEN_BITS) {
-			if (size() != 1) {
-				log("bad node", allocator);
-				throw std::runtime_error("value didn't have sz 1!");
-			}
-			return;
-		}
-
-		int32_t children_sz = 0;
-		for (auto iter = children.begin(); iter != children.end(); iter++) {
-			children_sz += allocator.get_object((*iter).second).size();
-			allocator.get_object((*iter).second).sz_check(allocator);
-		}
-		if (size() != children_sz) {
-			log("bad node", allocator);
-			std::fflush(stdout);
-			throw std::runtime_error("children sz mismatch");
-		}
-	}
-
 };
 
-
-
-template<typename ValueType, typename PrefixT>
-class RecyclingTrie;
-
-
-template<typename ValueType, typename PrefixT>
+template<typename ValueType, typename PrefixT, typename ExtraMetadata>
 class SerialRecyclingTrie {
-	using node_t = RecyclingTrieNode<ValueType, PrefixT>;
+	using node_t = RecyclingTrieNode<ValueType, PrefixT, ExtraMetadata>;
 	AllocationContext<node_t> allocation_context;
 	using ptr_t = node_t::ptr_t;
 	ptr_t root;
 
-	using main_trie_t = RecyclingTrie<ValueType, PrefixT>;
+	using main_trie_t = RecyclingTrie<ValueType, PrefixT, ExtraMetadata>;
 
 	friend main_trie_t;
 
@@ -498,7 +518,8 @@ public:
 		std::printf("sizeof: %lu\n", sizeof(node_t));
 	}
 
-	AllocationContext<node_t>& get_allocation_context() {
+	AllocationContext<node_t>& 
+	get_allocation_context() {
 		return allocation_context;
 	}
 };
@@ -508,14 +529,14 @@ struct AccountBatchMergeReduction;
 template<typename TrieT>
 struct AccountBatchMergeRange;
 
-template<typename ValueType, typename PrefixT = UInt64Prefix>
+template<typename ValueType, typename PrefixT = UInt64Prefix, typename ExtraMetadata = void>
 class RecyclingTrie {
 
 
 public:
-	using node_t = RecyclingTrieNode<ValueType, PrefixT>;
+	using node_t = RecyclingTrieNode<ValueType, PrefixT, ExtraMetadata>;
 	using ptr_t = node_t::ptr_t;
-	using serial_trie_t = SerialRecyclingTrie<ValueType, PrefixT>;
+	using serial_trie_t = SerialRecyclingTrie<ValueType, PrefixT, ExtraMetadata>;
 private:
 
 	AccountTrieNodeAllocator<node_t> allocator;
@@ -585,6 +606,8 @@ public:
 	}
 
 	size_t size() const {
+		std::lock_guard lock(mtx);
+
 		if (root == UINT32_MAX) {
 			return 0;
 		}
@@ -635,6 +658,8 @@ public:
 		AccountBatchMergeReduction<MergeFn> reduction{};
 
 		tbb::parallel_reduce(range, reduction);
+
+		tl_cache.clear();
 	}
 
 	template<typename ValueModifyFn>
@@ -666,32 +691,26 @@ public:
 	void hash(Hash& hash);
 
 	void log() {
+		std::lock_guard lock(mtx);
 		auto& ref = allocator.get_object(root);
 		ref.log("", allocator);
 	}
-
-	void sz_check() {
-		if (root == UINT32_MAX) {
-			return;
-		}
-		allocator.get_object(root).sz_check(allocator);
-	}
-
 };
 
-#define ATN_TEMPLATE template<typename ValueType, typename PrefixT>
-#define ATN_DECL RecyclingTrieNode<ValueType, PrefixT>
-#define RecyclingTrie_DECL RecyclingTrie<ValueType, PrefixT>
+#define ATN_TEMPLATE template<typename ValueType, typename PrefixT, typename ExtraMetadata>
+#define ATN_DECL RecyclingTrieNode<ValueType, PrefixT, ExtraMetadata>
+#define RecyclingTrie_DECL RecyclingTrie<ValueType, PrefixT, ExtraMetadata>
 
 ATN_TEMPLATE
 int32_t 
 ATN_DECL ::size() const {
-	return size_.load(std::memory_order_relaxed);
+	return metadata.size_;
+	//return size_.load(std::memory_order_relaxed);
 }
 
 ATN_TEMPLATE
 template<typename InsertFn, typename InsertedValueType>
-int32_t 
+ATN_DECL::metadata_t 
 ATN_DECL::insert(prefix_t key, InsertedValueType&& leaf_value, allocation_context_t& allocator) {
 
 	invalidate_hash();
@@ -715,16 +734,24 @@ ATN_DECL::insert(prefix_t key, InsertedValueType&& leaf_value, allocation_contex
 		// dealing with initial node case
 
 		//std::printf("setting initial value leaf\n");
-		set_as_value_leaf<InsertFn, InsertedValueType>(key, std::move(leaf_value), allocator);
+		auto new_meta = set_as_value_leaf<InsertFn, InsertedValueType>(key, std::move(leaf_value), allocator);
 		//log("post init:", allocator);
 
-		return 1;
+		return new_meta;
 	}
 
 	if (prefix_match_len == MAX_KEY_LEN_BITS) {
 		//std::printf("overwrite value");
+
+		//TODO faster impl here
+		auto old_meta = metadata_t::from_value(children.value(allocator));
+
 		InsertFn::value_insert(children.value(allocator), std::move(leaf_value));
-		return 0;
+
+		auto new_meta = metadata_t::from_value(children.value(allocator));
+		set_metadata(new_meta);
+
+		return new_meta - old_meta; // return 0
 	}
 
 	if (prefix_match_len == prefix_len) {
@@ -734,9 +761,10 @@ ATN_DECL::insert(prefix_t key, InsertedValueType&& leaf_value, allocation_contex
 
 		if (iter != children.end()) {
 			auto& child = allocator.get_object((*iter).second);
-			auto sz_delta = child.template insert<InsertFn, InsertedValueType>(key, std::move(leaf_value), allocator);
-			alter_size(sz_delta);
-			return sz_delta;
+			auto meta_delta = child.template insert<InsertFn, InsertedValueType>(key, std::move(leaf_value), allocator);
+			//alter_size(sz_delta);
+			alter_metadata(meta_delta);
+			return meta_delta;
 		} else {
 
 			//auto [new_child, new_child_ptr] = allocator.allocate_pair();
@@ -745,17 +773,20 @@ ATN_DECL::insert(prefix_t key, InsertedValueType&& leaf_value, allocation_contex
 
 			auto& new_child = children.init_new_child(branch_bits, allocator);
 			
-			new_child.template set_as_value_leaf<InsertFn, InsertedValueType>(key, std::move(leaf_value), allocator);
-			alter_size(1);
+			auto new_meta = new_child.template set_as_value_leaf<InsertFn, InsertedValueType>(key, std::move(leaf_value), allocator);
+			alter_metadata(new_meta);
+			//alter_size(1);
 			//children.emplace(branch_bits, new_child_ptr);
-			return 1;
+			return new_meta;
 		}
 	}
 
-	children_map_t original_children = std::move(children);
+	auto original_contents = extract_contents();
+
+	//children_map_t original_children = std::move(children);
 	children.reset_map(allocator);
 
-	auto original_prefix_len = prefix_len;
+	//auto original_prefix_len = prefix_len;
 
 	prefix_len = prefix_match_len;
 	auto new_child_branch = get_branch_bits(key);
@@ -766,12 +797,14 @@ ATN_DECL::insert(prefix_t key, InsertedValueType&& leaf_value, allocation_contex
 
 	auto& original_child = children.init_new_child(old_child_branch, allocator);
 
-	original_child.steal_other_node_contents(std::move(original_children), prefix, original_prefix_len, size());
+	original_child.set_from_contents(original_contents);//steal_other_node_contents(std::move(original_children), prefix, original_prefix_len, metadata /* size() */);
 
 	//auto new_child_ptr = allocator.allocate();
 	auto& new_child = children.init_new_child(new_child_branch, allocator);//d allocator.get_object(new_child_ptr);
 
-	new_child.template set_as_value_leaf<InsertFn, InsertedValueType>(key, std::move(leaf_value), allocator);
+	//auto new_child_meta = metadata_t::from_value(leaf_value);
+
+	auto new_child_meta = new_child.template set_as_value_leaf<InsertFn, InsertedValueType>(key, std::move(leaf_value), allocator);
 
 
 
@@ -779,9 +812,9 @@ ATN_DECL::insert(prefix_t key, InsertedValueType&& leaf_value, allocation_contex
 //	children.emplace(old_child_branch, original_child_ptr);
 
 	prefix.truncate(prefix_len);
-
-	alter_size(1);
-	return 1;
+	alter_metadata(new_child_meta);
+	//alter_size(1);
+	return new_child_meta; // return 1;
 }
 
 constexpr static bool USE_DIGEST_BUFFER = true;
@@ -879,7 +912,7 @@ ATN_DECL::compute_hash(const allocator_t& allocator, std::vector<unsigned char>&
 
 ATN_TEMPLATE
 template<typename MergeFn>
-int32_t 
+ATN_DECL::metadata_t 
 ATN_DECL::merge_in(ptr_t node, allocation_context_t& allocator) {
 
 	auto lock_guard = lock();
@@ -914,12 +947,15 @@ ATN_DECL::merge_in(ptr_t node, allocation_context_t& allocator) {
 //		std::printf("case 0\n");
 		//log("preval", allocator);
 		MergeFn::value_merge(children.value(allocator), other.children.value(allocator));
-		return 0;
+		return metadata_t::zero();
 	}
 
 	//case 1
 	if (prefix_len == other.prefix_len && prefix_len == prefix_match_len) {
-		int32_t sz_delta = 0;
+		//int32_t sz_delta = 0;
+
+		metadata_t meta_delta = metadata_t::zero();
+
 //		std::printf("case 1\n");
 		for (auto other_iter = other.children.begin(); other_iter != other.children.end(); other_iter++) {
 			auto main_iter = children.find((*other_iter).first);
@@ -929,17 +965,22 @@ ATN_DECL::merge_in(ptr_t node, allocation_context_t& allocator) {
 
 			if (main_iter == children.end()) {
 
-				sz_delta += other_ref.size();
+				meta_delta += other_ref.metadata;
+
+				//sz_delta += other_ref.size();
 				children.emplace((*other_iter).first, other_ptr, allocator);
 			} else {
 
 				auto& main_child = allocator.get_object((*main_iter).second);
-				sz_delta += main_child.template merge_in<MergeFn>(other_ptr, allocator);
+				//sz_delta += main_child.template merge_in<MergeFn>(other_ptr, allocator);
+				meta_delta += main_child.template merge_in<MergeFn>(other_ptr, allocator);
+
 
 			}
 		}
-		alter_size(sz_delta);
-		return sz_delta;
+		//alter_size(sz_delta);
+		alter_metadata(meta_delta);
+		return meta_delta;
 	}
 
 	// case 2
@@ -949,25 +990,30 @@ ATN_DECL::merge_in(ptr_t node, allocation_context_t& allocator) {
 //		std::printf("case 2\n");
 		auto iter = children.find(bb);
 		if (iter == children.end()) {
-			auto sz_delta = other.size();
+			//auto sz_delta = other.size();
+			auto meta_delta = other.metadata;
 			children.emplace(bb, node, allocator);
-			alter_size(sz_delta);
-			return sz_delta;
+			//alter_size(sz_delta);
+			alter_metadata(meta_delta);
+			return meta_delta;
 		}
 
 		auto child_ptr = (*iter).second;
 		auto& child = allocator.get_object(child_ptr);
 
-		auto sz_delta = child.template merge_in<MergeFn>(node, allocator);
-		alter_size(sz_delta);
-		return sz_delta;
+		auto meta_delta = child.template merge_in<MergeFn>(node, allocator);
+		alter_metadata(meta_delta);
+		return meta_delta;
 	}
 
 	// case 3
 
 	if (other.prefix_len == prefix_match_len /* thus prefix_len > prefix_match_len */ ) {
-		auto original_sz = size();
-		auto other_sz = other.size();
+		//auto original_sz = size();
+		//auto other_sz = other.size();
+
+		auto original_metadata = metadata;
+		auto other_metadata = other.metadata;
 
 		auto original_contents = extract_contents();
 		//auto original_children = std::move(children);
@@ -982,7 +1028,8 @@ ATN_DECL::merge_in(ptr_t node, allocation_context_t& allocator) {
 		prefix_len = other.prefix_len;
 		auto original_child_branch_bits = get_branch_bits(prefix);
 		prefix = other.prefix;
-		set_size(other_sz);
+		set_metadata(other_metadata);
+		//set_size(other_sz);
 
 
 		auto iter = children.find(original_child_branch_bits);
@@ -992,16 +1039,21 @@ ATN_DECL::merge_in(ptr_t node, allocation_context_t& allocator) {
 			auto& new_child = children.init_new_child(original_child_branch_bits, allocator);
 
 			new_child.set_from_contents(original_contents);// steal_other_node_contents(std::move(original_children), original_prefix, original_prefix_len, original_sz);
-			set_size(other_sz + original_sz);
+			
+			original_metadata += other_metadata;
+			set_metadata(original_metadata);//other_metadata + original_metadata);
+			//set_size(other_sz + original_sz);
 			//alter_size(original_sz);
-			return other_sz;
+			// return other_sz;
+			return other_metadata;
 		} else {
 			// case 3 recursion
 
 			auto matching_subtree_of_other_ptr = children[original_child_branch_bits];
 			auto& matching_subtree_of_other = allocator.get_object(matching_subtree_of_other_ptr);
 
-			auto matching_subtree_sz = matching_subtree_of_other.size();
+			auto matching_subtree_meta = matching_subtree_of_other.metadata;
+			//auto matching_subtree_sz = matching_subtree_of_other.size();
 
 			auto matching_subtree_contents = matching_subtree_of_other.extract_contents();
 			matching_subtree_of_other.set_from_contents(original_contents);
@@ -1012,10 +1064,14 @@ ATN_DECL::merge_in(ptr_t node, allocation_context_t& allocator) {
 
 			matching_subtree_of_other.template merge_in<MergeFn>(temp_ptr, allocator);
 
-			auto new_matching_subtree_sz = matching_subtree_of_other.size();
-			auto sz_delta = new_matching_subtree_sz - matching_subtree_sz;
-			alter_size(sz_delta);
-			return (size() - original_sz);
+			auto new_matching_subtree_meta = matching_subtree_of_other.metadata;
+			//auto new_matching_subtree_sz = matching_subtree_of_other.size();
+			auto meta_delta = new_matching_subtree_meta - matching_subtree_meta;
+			//auto sz_delta = new_matching_subtree_sz - matching_subtree_sz;
+			alter_metadata(meta_delta);
+			//alter_size(sz_delta);
+			return metadata - original_metadata;
+		//	return (size() - original_sz);
 		}
 	} /* end case 3 */
 
@@ -1043,10 +1099,13 @@ ATN_DECL::merge_in(ptr_t node, allocation_context_t& allocator) {
 	children.emplace(new_child_branch, node, allocator);
 
 	auto& new_child = allocator.get_object(children[new_child_branch]);
-	auto sz_delta = new_child.size();
-	alter_size(sz_delta);
+	auto meta_delta = new_child.metadata;
+	//auto sz_delta = new_child.size();
+	//alter_size(sz_delta);
+	alter_metadata(meta_delta);
 	prefix.truncate(prefix_len);
-	return sz_delta;
+	//return sz_delta;
+	return meta_delta;
 }
 
 
@@ -1109,6 +1168,9 @@ RecyclingTrie_DECL ::get_root_hash(Hash& out) {
 	}
 
 	auto& root_obj = allocator.get_object(root);
+	// the one method where size() is called without a mutex held
+	// in that same method.
+	// only call site is within hash, which grabs a mutex on the whole thing
 	uint32_t sz = root_obj.size();
 
 	constexpr size_t buf_sz = 4 + 32;
@@ -1225,13 +1287,13 @@ ATN_DECL ::accumulate_keys_parallel_worker(VectorType& output, size_t vector_off
 }
 
 ATN_TEMPLATE
-std::tuple<bool, int32_t, PtrWrapper>
-ATN_DECL::destructive_steal_child(const prefix_t stealing_prefix, const PrefixLenBits stealing_prefix_len, allocation_context_t& allocator) {
+std::tuple<bool, typename ATN_DECL::metadata_t, PtrWrapper>
+ATN_DECL::destructive_steal_child(const prefix_t& stealing_prefix, const PrefixLenBits stealing_prefix_len, allocation_context_t& allocator) {
 	auto lk = lock();
 
 	auto prefix_match_len = get_prefix_match_len(stealing_prefix, stealing_prefix_len);
 	if (prefix_match_len == stealing_prefix_len) {
-		return std::tuple(true, size(), PtrWrapper::make_nullptr());
+		return std::tuple(true, metadata, PtrWrapper::make_nullptr());
 	}
 
 	if (prefix_match_len == prefix_len) {
@@ -1239,13 +1301,13 @@ ATN_DECL::destructive_steal_child(const prefix_t stealing_prefix, const PrefixLe
 
 		auto iter = children.find(bb);
 		if (iter == children.end()) {
-			return {false, 0, PtrWrapper::make_nullptr()};
+			return {false, metadata_t::zero(), PtrWrapper::make_nullptr()};
 		}
 
-		auto [do_steal_entire_subtree, sz_delta, ptr] = allocator.get_object((*iter).second).destructive_steal_child(stealing_prefix, stealing_prefix_len, allocator);
+		auto [do_steal_entire_subtree, meta_delta, ptr] = allocator.get_object((*iter).second).destructive_steal_child(stealing_prefix, stealing_prefix_len, allocator);
 
 		if (do_steal_entire_subtree) {
-			alter_size(-sz_delta);
+			alter_metadata(-meta_delta);
 
 			auto new_ptr = allocator.allocate(1);
 			auto& new_node = allocator.get_object(new_ptr);
@@ -1255,21 +1317,23 @@ ATN_DECL::destructive_steal_child(const prefix_t stealing_prefix, const PrefixLe
 			auto old_contents = old_ptr_ref.extract_contents();
 			new_node.set_from_contents(old_contents);
 
-			return {false, sz_delta, PtrWrapper{new_ptr}};
+			return {false, meta_delta, PtrWrapper{new_ptr}};
 		} else {
 			if (ptr.non_null()) {
-				alter_size(-sz_delta);
-				return {false, sz_delta, ptr};
+				alter_metadata(-meta_delta);
+				//alter_size(-sz_delta);
+				return {false, meta_delta, ptr};
 			} else {
-				return {false, 0, PtrWrapper::make_nullptr()};
+				return {false, metadata_t::zero(), PtrWrapper::make_nullptr()};
 			}
 		}
 	}
 
-	return {false, 0, PtrWrapper::make_nullptr()};
+	return {false, metadata_t::zero(), PtrWrapper::make_nullptr()};
 }
 
 #undef ATN_TEMPLATE
 #undef ATN_DECL
+#undef RecyclingTrie_DECL
 
 } /* trie */

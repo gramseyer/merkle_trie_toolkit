@@ -221,7 +221,7 @@ struct AccountApplyRange {
 	}
 };
 
-template<typename ValueType, typename PrefixT>
+template<typename ValueType, typename PrefixT, typename ExtraMetadata>
 class SerialRecyclingTrie;
 
 template<typename TrieT>
@@ -230,7 +230,8 @@ struct AccountBatchMergeRange {
 	using map_value_t = std::vector<ptr_t>;
 	using allocator_t = AccountTrieNodeAllocator<TrieT>;
 	using prefix_t = TrieT::prefix_t;
-	using context_cache_t = utils::ThreadlocalCache<SerialRecyclingTrie<typename TrieT::value_t, prefix_t>>;
+	using metadata_t = TrieT::metadata_t;
+	using context_cache_t = utils::ThreadlocalCache<typename TrieT::main_trie_t::serial_trie_t>;//SerialRecyclingTrie<typename TrieT::value_t, prefix_t>>;
 	
 	allocator_t& allocator;
 	context_cache_t& cache;
@@ -438,19 +439,19 @@ struct AccountBatchMergeRange {
 		template<typename MergeFn>
 		void execute() const {
 			for (auto iter = entry_points.begin(); iter != entry_points.end(); iter++) {
-				int32_t sz_delta = 0;
+				metadata_t meta_delta = metadata_t::zero();
 				ptr_t entry_pt = iter -> first;
 				for (ptr_t node : iter -> second) {
 
 					if (allocator.get_object(node).size() > 0) {
 						
-						sz_delta += allocator.get_object(entry_pt).template merge_in<MergeFn>(node, cache.get(allocator).get_allocation_context());
+						meta_delta += allocator.get_object(entry_pt).template merge_in<MergeFn>(node, cache.get(allocator).get_allocation_context());
 					}
 				}
 
 				auto* entry_pt_realptr = &(allocator.get_object(entry_pt));
 
-				allocator.get_object(root).propagate_sz_delta(entry_pt_realptr, sz_delta, allocator);
+				allocator.get_object(root).propagate_sz_delta(entry_pt_realptr, meta_delta, allocator);
 			}
 		}
 };

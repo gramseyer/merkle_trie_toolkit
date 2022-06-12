@@ -123,7 +123,8 @@ struct OverwriteMergeFn {
 template<typename ValueType>
 struct OverwriteInsertFn : public GenericInsertFn<ValueType> {
 
-	static void value_insert(ValueType& main_value, ValueType&& other_value) {
+	static void 
+	value_insert(ValueType& main_value, ValueType&& other_value) {
 		main_value = std::move(other_value);
 	}
 
