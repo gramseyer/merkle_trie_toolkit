@@ -470,6 +470,7 @@ public:
 		for (auto iter = children.begin(); iter != children.end(); iter++)
 		{
 			meta_acc += allocator.get_object((*iter).second).get_metadata();
+			allocator.get_object((*iter).second).test_metadata_integrity_check(allocator);
 		}
 		if (meta_acc != metadata)
 		{
