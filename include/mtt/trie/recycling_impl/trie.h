@@ -239,7 +239,7 @@ public:
 	RecyclingTrieNode() 
 		: children()
 		, prefix_len(0)
-		, prefix(0)
+		, prefix()
 		{
 			set_metadata(metadata_t::zero());
 
@@ -249,7 +249,7 @@ public:
 	void set_as_empty_node() {
 		children.clear();
 		prefix_len = PrefixLenBits{0};
-		prefix = prefix_t{0};
+		prefix = prefix_t();
 		set_metadata(metadata_t::zero());
 
 		//set_size(0);
@@ -329,7 +329,7 @@ public:
 
 	//not threadsafe
 	template<typename InsertFn, typename InsertedValueType>
-	metadata_t insert(prefix_t key, InsertedValueType&& leaf_value, allocation_context_t& allocator);
+	metadata_t insert(prefix_t const& key, InsertedValueType&& leaf_value, allocation_context_t& allocator);
 
 	//not threadsafe
 	template<typename... ApplyToValueBeforeHashFn>
@@ -505,10 +505,10 @@ public:
 	SerialRecyclingTrie(main_trie_t& main_trie) 
 		: SerialRecyclingTrie(main_trie.get_allocator()) {}
 
-	void clear() {
-		root = UINT32_MAX;
-		allocation_context.clear();
-	}
+//	void clear() {
+//		root = UINT32_MAX;
+//		allocation_context.clear();
+//	}
 
 	size_t size() const {
 		return allocation_context.get_object(root).size();
@@ -529,9 +529,9 @@ public:
 	}
 
 	template<typename InsertFn = OverwriteInsertFn<ValueType>, typename InsertedValueType = ValueType>
-	void insert(uint64_t key, InsertedValueType&& value) {
+	void insert(PrefixT const& key, InsertedValueType&& value) {
 		auto& ref = allocation_context.get_object(root);
-		ref.template insert<InsertFn, InsertedValueType>(UInt64Prefix{key}, std::move(value), allocation_context);
+		ref.template insert<InsertFn, InsertedValueType>(key, std::move(value), allocation_context);
 	}
 
 	void log() {
@@ -614,6 +614,14 @@ private:
 		trie.acquire_new_root();
 	}
 
+	size_t size_nolock() const {
+
+		if (root == UINT32_MAX) {
+			return 0;
+		}
+		return allocator.get_object(root).size();
+	}
+
 public:
 	RecyclingTrie() {
 		if (sodium_init() == -1) {
@@ -636,10 +644,7 @@ public:
 	size_t size() const {
 		std::lock_guard lock(mtx);
 
-		if (root == UINT32_MAX) {
-			return 0;
-		}
-		return allocator.get_object(root).size();
+		return size_nolock();
 	}
 
 	ExtraMetadata metadata() const
@@ -679,7 +684,7 @@ public:
 		for (auto& serial : serial_tries) {
 			if (serial) {
 				std::printf("sz: %u\n", serial -> size());
-				if (size() > 0) {
+				if (size_nolock() > 0) {
 					ptrs.push_back(serial->extract_root());
 				} else {
 					merge_in_nolock<MergeFn>(*serial);
@@ -761,7 +766,7 @@ ATN_DECL ::size() const {
 ATN_TEMPLATE
 template<typename InsertFn, typename InsertedValueType>
 ATN_DECL::metadata_t 
-ATN_DECL::insert(prefix_t key, InsertedValueType&& leaf_value, allocation_context_t& allocator) {
+ATN_DECL::insert(prefix_t const& key, InsertedValueType&& leaf_value, allocation_context_t& allocator) {
 
 	invalidate_hash();
 

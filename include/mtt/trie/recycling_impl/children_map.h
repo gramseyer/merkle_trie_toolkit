@@ -133,12 +133,12 @@ public:
 		std::printf("tag: start %lu end %lu\n", offsetof(this_t, tag), offsetof(this_t, tag) + sizeof(tag));
 	}
 
-	void set_value(allocator_t& allocator, const ValueType& value_input) {
+	void set_value(allocator_t& allocator, ValueType&& value_input) {
 		stolen_guard("set_value");
 		if (tag != VALUE) {
 			value_ = allocator.allocate_value();
 			auto& ref = allocator.get_value(value_);
-			ref = value_input; // TODO std::move?
+			ref = std::move(value_input); // TODO std::move?
 			tag = VALUE;
 		}
 	}
