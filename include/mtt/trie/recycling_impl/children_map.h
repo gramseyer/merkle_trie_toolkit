@@ -137,10 +137,11 @@ public:
 		stolen_guard("set_value");
 		if (tag != VALUE) {
 			value_ = allocator.allocate_value();
-			auto& ref = allocator.get_value(value_);
-			ref = std::move(value_input); // TODO std::move?
 			tag = VALUE;
 		}
+		auto& ref = allocator.get_value(value_);
+		ref = std::move(value_input); // TODO std::move?
+
 	}
 
 	void set_map_noalloc() {
