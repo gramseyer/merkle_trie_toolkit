@@ -63,14 +63,51 @@ struct PtrWrapper {
 	}
 };
 
-template<typename ValueType, typename prefix_t>
+template<typename ValueType>
 struct ApplyableSubnodeRef {
+	uint32_t ptr;
+	AccountTrieNodeAllocator<ValueType>& allocator;
+
+	template<typename ApplyFn>
+	void apply(ApplyFn& fn, auto&&... args) {
+		allocator.get_object(ptr).apply(fn, allocator, args...);
+	}
+
+	template<typename ApplyFn>
+	void apply_to_keys(ApplyFn& fn) {
+		allocator.get_object(ptr).apply_to_keys(fn, allocator);
+	}
+
+	template<typename ApplyFn>
+	void apply_to_kvs(ApplyFn& fn) const
+	{
+		allocator.get_object(ptr).apply_to_kvs(fn, allocator);
+	}
+
+	template<typename ApplyFn>
+	void apply_to_kvs(ApplyFn& fn)
+	{
+		allocator.get_object(ptr).apply_to_kvs(fn, allocator);
+	}
+
+	auto
+	get_prefix() const {
+		return allocator.get_object(ptr).get_prefix();
+	}
+
+	PrefixLenBits get_prefix_len() const {
+		return allocator.get_object(ptr).get_prefix_len();
+	}
+};
+
+template<typename ValueType>
+struct ConstApplyableSubnodeRef {
 	uint32_t ptr;
 	const AccountTrieNodeAllocator<ValueType>& allocator;
 
 	template<typename ApplyFn>
-	void apply(ApplyFn& fn) const {
-		allocator.get_object(ptr).apply(fn, allocator);
+	void apply(ApplyFn& fn, auto&&... args) const {
+		allocator.get_object(ptr).apply(fn, allocator, args...);
 	}
 
 	template<typename ApplyFn>
@@ -78,7 +115,13 @@ struct ApplyableSubnodeRef {
 		allocator.get_object(ptr).apply_to_keys(fn, allocator);
 	}
 
-	prefix_t
+	template<typename ApplyFn>
+	void apply_to_kvs(ApplyFn& fn) const
+	{
+		allocator.get_object(ptr).apply_to_kvs(fn, allocator);
+	}
+
+	auto
 	get_prefix() const {
 		return allocator.get_object(ptr).get_prefix();
 	}
@@ -287,6 +330,11 @@ public:
 		metadata += delta;
 	}
 
+	ValueType const& get_value(const allocator_t& allocator) const
+	{
+		return children.value(allocator);
+	}
+
 	/*void set_size(int32_t sz) {
 		size_.store(sz, std::memory_order_relaxed);
 	}
@@ -444,6 +492,18 @@ public:
 		}
 	}
 
+	template <typename ApplyFn>
+	void apply(ApplyFn& fn, allocator_t& allocator) {
+		if (prefix_len == MAX_KEY_LEN_BITS) {
+			fn(children.value(allocator));
+			return;
+		}
+		for (auto iter = children.begin(); iter != children.end(); iter++) {
+			auto& child = allocator.get_object((*iter).second);
+			child.apply(fn, allocator);
+		}
+	}
+
 	template<typename ApplyFn>
 	void apply_to_keys(ApplyFn& fn, const allocator_t& allocator) const {
 		if (prefix_len == MAX_KEY_LEN_BITS) {
@@ -454,6 +514,20 @@ public:
 		for (auto iter = children.begin(); iter != children.end(); iter++) {
 			auto& child = allocator.get_object((*iter).second);
 			child.apply_to_keys(fn, allocator);
+		}
+	}
+
+	template<typename ApplyFn>
+	void
+	apply_to_kvs(ApplyFn& fn, const allocator_t& allocator) const
+	{
+		if (prefix_len == MAX_KEY_LEN_BITS)
+		{
+			fn(prefix, children.value(allocator));
+		}
+		for (auto iter = children.begin(); iter != children.end(); iter++) {
+			auto& child = allocator.get_object((*iter).second);
+			child.apply_to_kvs(fn, allocator);
 		}
 	}
 
@@ -717,15 +791,35 @@ public:
 		AccountApplyRange<node_t> range(root, allocator);
 		//guaranteed that range.work_list contains no overlaps
 
-		//Fences are present because ValueModifyFn can modify various
-		//memory locations in MemoryDatabase
-		//std::atomic_thread_fence(std::memory_order_release);
 		tbb::parallel_for(
 			range,
 			[&fn, this] (const auto& range) {
 				for (unsigned int i = 0; i < range.work_list.size(); i++) {
-					ApplyableSubnodeRef ref{range.work_list[i], allocator};
+					ConstApplyableSubnodeRef ref{range.work_list[i], allocator};
 					fn(ref);
+				}
+			});
+	}
+
+	template<typename ValueModifyFn, typename Range>
+	void parallel_batch_value_modify_customrange(ValueModifyFn& fn)
+	{
+		std::lock_guard lock(mtx);
+		if (root == UINT32_MAX) {
+			std::printf("trie is null, nothing to parallel_batch_value_modify\n");
+			return;
+		}
+
+		Range range(root, allocator);
+
+		tbb::parallel_for(
+			range,
+			[&fn, this] (const auto& range) {
+				//for (auto work : range)
+				for (auto it = range.begin(); it != range.end(); it++) {
+				//for (unsigned int i = 0; i < range.work_list.size(); i++) {
+					ApplyableSubnodeRef ref{it.get_node_id(), allocator};
+					fn(ref, it.get_config());
 				}
 			});
 	}

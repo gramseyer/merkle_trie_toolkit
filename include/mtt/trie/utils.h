@@ -43,6 +43,21 @@ struct PointerValue {
 	}
 };
 
+template<typename V, auto serialize_fn>
+struct SerializeWrapper : public V
+{
+	using V::V;
+	
+
+	bool operator==(const SerializeWrapper& other) const = default;
+
+	void copy_data(std::vector<uint8_t>& buf) const
+	{
+		auto serialization = serialize_fn(*this);
+		buf.insert(buf.end(), serialization.begin(), serialization.end());
+	}
+};
+
 template<typename xdr_type, auto serialize_fn>
 struct XdrTypeWrapper : public xdr_type {
 

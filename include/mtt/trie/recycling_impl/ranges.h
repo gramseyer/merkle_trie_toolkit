@@ -201,7 +201,7 @@ struct AccountApplyRange {
 			while (work_size < original_sz/2) {
 				if (other.work_list.size() == 0) {
 					std::printf("other work list shouldn't be zero!\n");
-					throw std::runtime_error("get fucked this won't print");
+					throw std::runtime_error("errors in tbb don't print, sadly");
 				}
 				if (other.work_list.size() == 1) {
 
