@@ -50,6 +50,9 @@ public:
 		, value_buffer_offset_and_index(value_buffer_offset_and_index)
 		, allocator(allocator) {}
 
+	AllocationContext(const AllocationContext&) = delete;
+	AllocationContext operator=(const AllocationContext&) = delete;:
+
 	uint32_t allocate(uint8_t num_nodes) {
 		if (((cur_buffer_offset_and_index + num_nodes) & OFFSET_MASK) > BUF_SIZE) {
 			allocator.assign_new_buffer(*this);
