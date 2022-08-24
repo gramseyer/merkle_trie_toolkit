@@ -11,14 +11,17 @@ without using pthread tls keys.
 #include <cstdint>
 #include <optional>
 
+#include "mtt/utils/non_movable.h"
+
 namespace utils {
 
 //! Stores a unique thread_local identifier (uint32_t).
 //! Call get() to access id.
-class ThreadlocalIdentifier {
+class ThreadlocalIdentifier : private NonMovableOrCopyable{
 	inline static std::atomic<uint32_t> _tl_initializer = 0;
 	inline static thread_local uint32_t tid 
 		= _tl_initializer.fetch_add(1, std::memory_order_relaxed); 
+
 public:
 	static uint32_t get() {
 		return tid;
@@ -42,9 +45,13 @@ This would be dangerous (easy to forget this restriction). YMMV.
 */
 
 template<typename ValueType, int CACHE_SIZE = 128>
-class ThreadlocalCache {
+class ThreadlocalCache : private NonMovableOrCopyable {
 
 	std::array<std::optional<ValueType>, CACHE_SIZE> objects;
+
+	ThreadlocalCache(const ThreadlocalCache&) = delete;
+	ThreadlocalCache(ThreadlocalCache&&) = delete;
+	ThreadlocalCache& operator=(const ThreadlocalCache&) = delete;
 
 public:
 

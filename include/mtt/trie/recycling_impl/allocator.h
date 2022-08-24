@@ -2,8 +2,9 @@
 
 #include <cstdint>
 
-namespace trie {
+#include "mtt/utils/non_movable.h"
 
+namespace trie {
 
 struct AccountTrieAllocatorConstants {
 	constexpr static size_t BUF_SIZE = 500'000;
@@ -15,6 +16,8 @@ struct AccountTrieAllocatorConstants {
 		= (((uint32_t)1) << (OFFSET_BITS)) - 1;
 
 	static_assert(BUFFER_ID_BITS + OFFSET_BITS == 32, "ptrs are size 32 bits");
+
+	AccountTrieAllocatorConstants() = delete;
 };
 
 template<typename ObjType>
@@ -26,7 +29,7 @@ Allocations are never recycled, until the main node allocator is cleared
 (after which a context should not be used until reset)
 */
 template<typename ObjType>
-class AllocationContext {
+class AllocationContext : private utils::NonMovableOrCopyable {
 	uint32_t cur_buffer_offset_and_index = UINT32_MAX;
 	uint32_t value_buffer_offset_and_index = UINT32_MAX;
 
@@ -49,9 +52,6 @@ public:
 		: cur_buffer_offset_and_index(cur_buffer_offset_and_index)
 		, value_buffer_offset_and_index(value_buffer_offset_and_index)
 		, allocator(allocator) {}
-
-	AllocationContext(const AllocationContext&) = delete;
-	AllocationContext operator=(const AllocationContext&) = delete;:
 
 	uint32_t allocate(uint8_t num_nodes) {
 		if (((cur_buffer_offset_and_index + num_nodes) & OFFSET_MASK) > BUF_SIZE) {
@@ -107,7 +107,7 @@ After resetting, created contexts should be nullified.
 This struct is threadsafe.
 */
 template<typename ObjType>
-struct AccountTrieNodeAllocator {
+struct AccountTrieNodeAllocator : private utils::NonMovableOrCopyable {
 	constexpr static size_t BUF_SIZE 
 		= AccountTrieAllocatorConstants::BUF_SIZE;
 	constexpr static uint8_t OFFSET_BITS 

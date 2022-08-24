@@ -4,7 +4,6 @@
 #include <cstring>
 
 #include "mtt/trie/prefix.h"
-#include "mtt/trie/build_endian.h"
 
 #include "mtt/utils/serialize_endian.h"
 
