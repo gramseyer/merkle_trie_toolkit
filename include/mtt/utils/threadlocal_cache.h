@@ -44,14 +44,10 @@ any exported references or cause concurrent access to non-threadsafe objects.
 This would be dangerous (easy to forget this restriction). YMMV.
 */
 
-template<typename ValueType, int CACHE_SIZE = 128>
+template<typename ValueType, uint8_t CACHE_SIZE = 128>
 class ThreadlocalCache : private NonMovableOrCopyable {
 
 	std::array<std::optional<ValueType>, CACHE_SIZE> objects;
-
-	ThreadlocalCache(const ThreadlocalCache&) = delete;
-	ThreadlocalCache(ThreadlocalCache&&) = delete;
-	ThreadlocalCache& operator=(const ThreadlocalCache&) = delete;
 
 public:
 
@@ -75,8 +71,8 @@ public:
 	}
 
 	template<typename... ctor_args>
-	ValueType& get_index(int idx, ctor_args&... args) {
-		if (idx >= CACHE_SIZE || idx < 0) {
+	ValueType& get_index(uint8_t idx, ctor_args&... args) {
+		if (idx >= CACHE_SIZE) {
 			throw std::runtime_error("invalid tlcache access!");
 		}
 		if (!objects[idx]) {
@@ -87,16 +83,16 @@ public:
 
 	//! At times it is useful to export the list of cached objects
 	//! all at once.
-	std::array<std::optional<ValueType>, CACHE_SIZE>& get_objects() {
+	std::array<std::optional<ValueType>, CACHE_SIZE>& 
+	get_objects() {
 		return objects;
 	}
 
 	void clear() {
-		for (int i = 0; i < CACHE_SIZE; i++) {
+		for (uint8_t i = 0; i < CACHE_SIZE; i++) {
 			objects[i] = std::nullopt;
 		}
 	}
-
 };
 
 } /* namespace utils */

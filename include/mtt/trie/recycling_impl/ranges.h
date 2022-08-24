@@ -231,7 +231,7 @@ struct AccountBatchMergeRange {
 	using allocator_t = AccountTrieNodeAllocator<TrieT>;
 	using prefix_t = TrieT::prefix_t;
 	using metadata_t = TrieT::metadata_t;
-	using context_cache_t = utils::ThreadlocalCache<typename TrieT::main_trie_t::serial_trie_t>;//SerialRecyclingTrie<typename TrieT::value_t, prefix_t>>;
+	using context_cache_t = utils::ThreadlocalCache<typename TrieT::main_trie_t::serial_trie_t>;
 	
 	allocator_t& allocator;
 	context_cache_t& cache;

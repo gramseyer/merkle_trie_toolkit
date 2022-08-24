@@ -22,6 +22,7 @@
 
 #include "mtt/utils/threadlocal_cache.h"
 #include "mtt/utils/serialize_endian.h"
+#include "mtt/utils/non_movable.h"
 
 #include "mtt/trie/types.h"
 
@@ -135,7 +136,7 @@ template<typename ValueType, typename PrefixT, typename ExtraMetadata>
 class RecyclingTrie;
 
 template<typename ValueType, typename PrefixT, typename ExtraMetadata>
-class alignas(64) RecyclingTrieNode {
+class alignas(64) RecyclingTrieNode : private utils::NonMovableOrCopyable {
 
 public:
 	using prefix_t = PrefixT;
