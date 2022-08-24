@@ -7,6 +7,7 @@ Two implementations of a trie prefix.  One is an arbitrary-length
 byte array, and one is specialized for accountid keys.
 */
 #include <atomic>
+#include <bit>
 #include <compare>
 #include <concepts>
 #include <cstdint>
@@ -15,7 +16,6 @@ byte array, and one is specialized for accountid keys.
 
 #include <tbb/blocked_range.h> // to get tbb::split
 
-#include "mtt/trie/build_endian.h"
 #include "mtt/trie/debug_macros.h"
 
 #include "mtt/utils/serialize_endian.h"
@@ -118,7 +118,8 @@ in practice we always use BRANCH_BITS=4.
 */
 template<uint16_t MAX_LEN_BYTES, uint8_t BRANCH_BITS = 4>
 struct ByteArrayPrefix {
-	static_assert(TRIE_WORDS_BIGENDIAN == 0, "big endian is unimplemented");
+
+	static_assert(std::endian::native == std::endian::little, "big endian unimplemented");
 	static_assert(BRANCH_BITS == 4, "unimplemented otherwise");
 
 	constexpr static uint16_t WORDS 

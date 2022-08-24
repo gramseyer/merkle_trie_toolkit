@@ -1406,7 +1406,7 @@ RecyclingTrie_DECL::accumulate_keys_parallel(VectorType& output) const {
 ATN_TEMPLATE
 template<typename VectorType>
 void 
-ATN_DECL ::accumulate_values_parallel_worker(VectorType& output, size_t vector_offset, const allocator_t& allocator) const {
+ATN_DECL::accumulate_values_parallel_worker(VectorType& output, size_t vector_offset, const allocator_t& allocator) const {
 	if (prefix_len == MAX_KEY_LEN_BITS) {
 		output[vector_offset] = children.value(allocator);
 		return;
@@ -1422,7 +1422,7 @@ ATN_DECL ::accumulate_values_parallel_worker(VectorType& output, size_t vector_o
 ATN_TEMPLATE
 template<typename VectorType>
 void 
-ATN_DECL ::accumulate_keys_parallel_worker(VectorType& output, size_t vector_offset, const allocator_t& allocator) const {
+ATN_DECL::accumulate_keys_parallel_worker(VectorType& output, size_t vector_offset, const allocator_t& allocator) const {
 	if (prefix_len == MAX_KEY_LEN_BITS) {
 		output[vector_offset] = prefix.uint64();
 		return;
