@@ -472,7 +472,7 @@ public:
 	}
 
 	template<bool x = HAS_SIZE>
-	typename std::enable_if<x, size_t>::type size() const {
+	typename std::enable_if<x, uint32_t>::type size() const {
 		static_assert(x == HAS_SIZE, "no funny business");
 
 		int64_t sz = metadata.size.load(std::memory_order_acquire);
@@ -484,7 +484,7 @@ public:
 	}
 
 	template<bool x = HAS_SIZE>
-	typename std::enable_if<!x, size_t>::type size() const {
+	typename std::enable_if<!x, uint32_t>::type size() const {
 		static_assert(x == HAS_SIZE, "no funny business");
 		return uncached_size();
 	}
@@ -508,7 +508,7 @@ public:
 		return 0;
 	}
 
-	size_t uncached_size() const;
+	uint32_t uncached_size() const;
 
 	//! Accumulate a list of all values in trie into \a values.
 	//! Overwrites contents of \a values.
@@ -947,7 +947,7 @@ public:
 	}
 
 	template<bool x = HAS_SIZE>
-	typename std::enable_if<x, size_t>::type size() const {
+	typename std::enable_if<x, uint32_t>::type size() const {
 		std::shared_lock<std::shared_mutex> lock(*hash_modify_mtx);
 		if (root) {
 			auto sz = root->size();
@@ -959,7 +959,7 @@ public:
 		return 0;
 	}
 	template<bool x = HAS_SIZE>
-	typename std::enable_if<!x, size_t>::type size() const {
+	typename std::enable_if<!x, uint32_t>::type size() const {
 		std::shared_lock<std::shared_mutex> lock(*hash_modify_mtx);
 		if (root) {
 			return root->uncached_size();
@@ -968,7 +968,7 @@ public:
 	}
 
 
-	size_t uncached_size() const {
+	uint32_t uncached_size() const {
 		std::shared_lock lock(*hash_modify_mtx);
 		if (root) {
 			return root -> uncached_size();
@@ -1524,12 +1524,12 @@ TrieNode<TEMPLATE_PARAMS>::get_branch_bits(const prefix_t& data) const {
 }
 
 TEMPLATE_SIGNATURE
-size_t 
+uint32_t 
 TrieNode<TEMPLATE_PARAMS>::uncached_size() const {
 	if (prefix_len == MAX_KEY_LEN_BITS) {
 		return 1;
 	} 
-	unsigned int sz = 0;
+	uint32_t sz = 0;
 
 	for (auto iter = children.begin(); iter != children.end(); iter++) {
 		sz += (*iter).second->uncached_size();
