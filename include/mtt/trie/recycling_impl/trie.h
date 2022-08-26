@@ -758,7 +758,6 @@ public:
 		std::vector<ptr_t> ptrs;
 		for (auto& serial : serial_tries) {
 			if (serial) {
-				std::printf("sz: %u\n", serial -> size());
 				if (size_nolock() > 0) {
 					ptrs.push_back(serial->extract_root());
 				} else {
@@ -768,6 +767,7 @@ public:
 		}
 
 		if (ptrs.size() == 0) {
+			tl_cache.clear();
 			return;
 		}
 
@@ -785,7 +785,7 @@ public:
 
 		std::lock_guard lock(mtx);
 		if (root == UINT32_MAX) {
-			std::printf("trie is null, nothing to parallel_batch_value_modify\n");
+			// trie is null, nothing to parallel_batch_value_modify
 			return;
 		}
 
@@ -807,7 +807,7 @@ public:
 	{
 		std::lock_guard lock(mtx);
 		if (root == UINT32_MAX) {
-			std::printf("trie is null, nothing to parallel_batch_value_modify\n");
+			// trie is null, nothing to parallel_batch_value_modify
 			return;
 		}
 

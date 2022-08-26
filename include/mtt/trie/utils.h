@@ -46,8 +46,17 @@ struct PointerValue {
 template<typename V, auto serialize_fn>
 struct SerializeWrapper : public V
 {
-	using V::V;
-	
+	SerializeWrapper(const V& v)
+		: V(v)
+		{}
+
+	SerializeWrapper(V&& v)
+		: V(std::move(v))
+		{}
+
+	SerializeWrapper()
+		: V()
+		{}
 
 	bool operator==(const SerializeWrapper& other) const = default;
 
@@ -212,7 +221,7 @@ public:
 	}
 
 	std::unique_ptr<std::lock_guard<std::shared_mutex>>
-	get_lock_ref() const {
+	get_lock_ptr() const {
 		return std::make_unique<std::lock_guard<std::shared_mutex>>(mtx);
 	}
 

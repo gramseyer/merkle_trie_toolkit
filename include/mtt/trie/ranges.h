@@ -420,10 +420,9 @@ struct BatchMergeRange {
 							theft_candidate, 
 							std::move(stolen_merge_in_tries));
 						num_children += theft_candidate-> size();
-					} else {
 					}
-
-
+					// otherwise, nothing to do for that theft_candidate,
+					// so don't need to bother adding to entry_points
 
 					other.num_children -= theft_candidate->size();
 				} else {
@@ -472,7 +471,7 @@ struct BatchMergeRange {
 	//! Does all the work of merging in tries for which this range
 	//! is responsible.
 	template<typename MergeFn>
-	void execute() {
+	void execute() const {
 
 		for (auto iter = entry_points.begin(); 
 			iter != entry_points.end(); 
@@ -508,7 +507,7 @@ template<typename MergeFn>
 struct BatchMergeReduction {
 
 	template<typename TrieT, typename MetadataType>
-	void operator()(BatchMergeRange<TrieT, MetadataType>& range) {
+	void operator()(const BatchMergeRange<TrieT, MetadataType>& range) {
 		range.template execute<MergeFn>();
 	}
 

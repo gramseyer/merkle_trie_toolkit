@@ -3,7 +3,7 @@
 /*! \file threadlocal_cache.h
 
 Maintain a concurrently-accessible threadlocal storage,
-without using pthread tls keys.
+without explicitly using pthread tls keys.
 */
 
 #include <array>

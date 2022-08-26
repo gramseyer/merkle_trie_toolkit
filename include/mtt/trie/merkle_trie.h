@@ -17,13 +17,14 @@ virtual addresses).
 #include "mtt/trie/metadata.h"
 #include "mtt/trie/prefix.h"
 #include "mtt/trie/ranges.h"
+#include "mtt/trie/types.h"
 #include "mtt/trie/utils.h"
 
 #include "mtt/trie/debug_macros.h"
 
 #include "mtt/utils/serialize_endian.h"
+#include "mtt/utils/threadlocal_cache.h"
 
-#include "mtt/trie/types.h"
 
 #include <sodium.h>
 
@@ -1202,18 +1203,16 @@ public:
 		return output;
 	}
 
+
+	// this versions returns nullptr if there's not an exact match for query_prefix.
+	// An alternative would be to return a higher node.
  	TrieT*	
 	get_subnode_ref_nolocks(
 		const prefix_t query_prefix, const PrefixLenBits query_len_bits) {
+		
 		auto res = root 
 			-> get_subnode_ref_nolocks(query_prefix, query_len_bits);
-		if (res == nullptr) {
-			if (!root) {
-				std::printf("root shouldn't be null!!!\n");
-				throw std::runtime_error("root can't be null!");
-			}
-			return root.get();
-		}
+
 		return res;
 	}
 
@@ -1443,6 +1442,9 @@ public:
 
 	template<typename MergeFn = OverwriteMergeFn>
 	void batch_merge_in(std::vector<std::unique_ptr<TrieT>>&& tries);
+
+	template<typename MergeFn = OverwriteMergeFn>
+	void batch_merge_in(utils::ThreadlocalCache<MerkleTrie>& tries);
 
 	//! Invalidates hash from root to target node.
 	void
@@ -1936,6 +1938,36 @@ MerkleTrie<TEMPLATE_PARAMS>::batch_merge_in(
 	tbb::parallel_reduce(range, reduction);
 }
 
+TEMPLATE_SIGNATURE
+template<typename MergeFn>
+void
+MerkleTrie<TEMPLATE_PARAMS>::batch_merge_in(
+	utils::ThreadlocalCache<MerkleTrie>& tl_cache)
+{
+	std::vector<std::unique_ptr<TrieT>> tries;
+
+	auto& mts = tl_cache.get_objects();
+
+	for (auto& mt : mts) {
+		if (mt) {
+			if (size() > 0) {
+				tries.push_back(mt->extract_root());
+			} else {
+				merge_in<MergeFn>(std::move(*mt));
+			}
+		}
+	}
+
+	if (tries.size() == 0) {
+		tl_cache.clear();
+		return;
+	}
+
+	batch_merge_in(std::move(tries));
+
+	tl_cache.clear();
+}
+
 /*!
 Called "destructive" because it destroys the invariant that a node has children.
 Only should be used in relation to batch_merge_in.
@@ -2027,7 +2059,7 @@ TrieNode<TEMPLATE_PARAMS>::propagate_metadata(
 	}
 
 
-	update_metadata(branch_bits, metadata);
+	update_metadata(metadata);
 	(*iter).second -> propagate_metadata(target, metadata);
 }
 
@@ -3298,7 +3330,9 @@ TrieNode<TEMPLATE_PARAMS>::get_subnode_ref_nolocks(
 		auto bb = get_branch_bits(query_prefix);
 		auto iter = children.find(bb);
 		if (iter == children.end()) {
-			throw std::runtime_error("can't recurse down nonexistent subtree!");
+			// can't recurse down nexist subtree, returning nullptr
+			return nullptr;
+			//throw std::runtime_error("can't recurse down nonexistent subtree!");
 		}
 		if (!(*iter).second) {
 			_log("bad node: ");
@@ -3307,11 +3341,10 @@ TrieNode<TEMPLATE_PARAMS>::get_subnode_ref_nolocks(
 
 		auto child_candidate = (*iter).second 
 				 -> get_subnode_ref_nolocks(query_prefix, query_len);
-		if (child_candidate == nullptr) {
-			return this;
-		}
 		return child_candidate;
 	}
+	std::printf("invalid recursion\n");
+	std::fflush(stdout);
 	throw std::runtime_error("invalid recursion");
 }
 
