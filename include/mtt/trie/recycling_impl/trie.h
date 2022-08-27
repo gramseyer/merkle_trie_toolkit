@@ -1429,11 +1429,11 @@ RecyclingTrie_DECL ::accumulate_values_parallel(VectorType& output) const {
 
 	std::lock_guard lock(mtx);
 
-	if (size() == 0) return;
+	if (size_nolock() == 0) return;
 
 	AccountAccumulateValuesRange<node_t> range(root, allocator);
 
-	output.resize(size());
+	output.resize(size_nolock());
 
 	tbb::parallel_for(
 		range,
@@ -1449,15 +1449,15 @@ RecyclingTrie_DECL ::accumulate_values_parallel(VectorType& output) const {
 ATN_TEMPLATE
 template<typename VectorType>
 void  
-RecyclingTrie_DECL::accumulate_keys_parallel(VectorType& output) const {
-
+RecyclingTrie_DECL::accumulate_keys_parallel(VectorType& output) const
+{
 	std::lock_guard lock(mtx);
 
-	if (size() == 0) return;
+	if (size_nolock() == 0) return;
 
 	AccountAccumulateValuesRange<node_t> range(root, allocator);
 
-	output.resize(size());
+	output.resize(size_nolock());
 
 	tbb::parallel_for(
 		range,
