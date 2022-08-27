@@ -335,7 +335,7 @@ public:
 			}
 		}
 
-		typename children_map_t::iterator local_iter;
+		typename children_map_t::const_iterator local_iter;
 
 		std::unique_ptr<iterator> child_iter;
 
@@ -980,7 +980,7 @@ public:
 			Hash buf;
 			hash(buf);
 
-			auto str = debug::array_to_str(buf.data(), buf.size());
+			auto str = detail::array_to_str(buf.data(), buf.size());
 
 			LOG("%s root hash: %s", padding.c_str(), str.c_str());
 		}
@@ -1488,14 +1488,14 @@ void TrieNode<TEMPLATE_PARAMS>::_log(std::string padding) const {
 		prefix_len.len);
 	if (get_hash_valid()) {
 		LOG("%snode hash is: %s", 
-			padding.c_str(), debug::array_to_str(hash.data(), 32).c_str());
+			padding.c_str(), detail::array_to_str(hash.data(), 32).c_str());
 	}
 	if (prefix_len == MAX_KEY_LEN_BITS) {
 		std::vector<unsigned char> buf;
 		auto const& value = children.value();
 		//value.serialize();
 		value.copy_data(buf);
-		auto str = debug::array_to_str(buf.data(), buf.size());
+		auto str = detail::array_to_str(buf.data(), buf.size());
 		LOG("%svalue serialization is %s", padding.c_str(), str.c_str());
 		buf.clear();
 	}
@@ -1704,7 +1704,7 @@ compute_hash_branch_node(
 	}
 
 	TRIE_INFO("hash input:%s", 
-		debug::array_to_str(digest_bytes.data(), digest_bytes.size()).c_str());
+		detail::array_to_str(digest_bytes.data(), digest_bytes.size()).c_str());
 	if (crypto_generichash(
 		hash_buf.data(), hash_buf.size(), 
 		digest_bytes.data(), digest_bytes.size(), 
@@ -1784,7 +1784,7 @@ compute_hash_branch_node(
 	}
 
 	TRIE_INFO("hash input:%s", 
-		debug::array_to_str(digest_bytes.data(), digest_bytes.size()).c_str());
+		detail::array_to_str(digest_bytes.data(), digest_bytes.size()).c_str());
 
 	if (crypto_generichash(
 		hash_buf.data(), hash_buf.size(), 
@@ -1857,12 +1857,12 @@ MerkleTrie<TEMPLATE_PARAMS>::get_root_hash(Hash& out) {
 	}
 	TRIE_INFO("top level hash in num children: %lu", num_children);
 	TRIE_INFO("top level hash in: %s", 
-		debug::array_to_str(buf, buf_size).c_str());
+		detail::array_to_str(buf, buf_size).c_str());
 	
 	crypto_generichash(out.data(), out.size(), buf.data(), buf.size(), NULL, 0);
 
 	TRIE_INFO("top level hash out: %s", 
-		debug::array_to_str(out.data(), out.size()).c_str());
+		detail::array_to_str(out.data(), out.size()).c_str());
 }
 
 TEMPLATE_SIGNATURE
@@ -2108,7 +2108,7 @@ TrieNode<TEMPLATE_PARAMS>::create_proof_node() {
 
 	PROOF_INFO("prefix_len = %u data=%s", 
 		prefix_len, 
-		debug::array_to_str(output.prefix_length_and_bv.data(), 4).c_str());
+		detail::array_to_str(output.prefix_length_and_bv.data(), 4).c_str());
 
 
 	while (!bv.empty()) {

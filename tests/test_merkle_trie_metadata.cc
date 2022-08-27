@@ -14,7 +14,6 @@ using namespace trie;
 
 TEST_CASE("size insert", "[trie]")
 {
-
 	using mt = MerkleTrie<ByteArrayPrefix<2>, EmptyValue, CombinedMetadata<SizeMixin>>;
 	mt trie;
 	mt :: prefix_t key_buf;

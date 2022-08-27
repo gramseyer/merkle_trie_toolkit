@@ -329,7 +329,7 @@ struct ByteArrayPrefix {
 	std::string to_string(const PrefixLenBits len) const {
 		
 		auto bytes = get_bytes(len);
-		return debug::array_to_str(bytes.data(), len.num_prefix_bytes());
+		return detail::array_to_str(bytes.data(), len.num_prefix_bytes());
 	}
 
 	//! Sets the bits immediately following the first fixed_len_bits bits
@@ -429,6 +429,16 @@ public:
 		return out;
 	}
 
+	//! Bounds checked byte access.
+	unsigned char& at(size_t i) {
+		if (i >= MAX_LEN_BYTES) {
+			throw std::runtime_error("invalid prefix array access!");
+		}
+
+		unsigned char* data_ptr = reinterpret_cast<unsigned char*>(&prefix);
+		return data_ptr[i];
+	}
+
 	std::vector<uint8_t> get_bytes(PrefixLenBits const& prefix_len_bits) const {
 		std::vector<uint8_t> out;
 		auto full = get_bytes_array<std::array<uint8_t, MAX_LEN_BYTES>>();
@@ -443,7 +453,7 @@ public:
 
 	std::string to_string(const PrefixLenBits& len) const {
 		auto bytes = get_bytes(len);
-		return debug::array_to_str(bytes.data(), len.num_prefix_bytes());
+		return detail::array_to_str(bytes.data(), len.num_prefix_bytes());
 	}
 
 	//! Modify the prefix by setting the bits after fixed_len to bb

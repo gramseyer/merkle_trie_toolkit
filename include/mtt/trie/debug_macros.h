@@ -18,18 +18,6 @@ Printouts include file/line information.
 #define LOG(s, ...) TRIE_LOG(s, __VA_ARGS__)
 #endif
 
-#ifndef TEST_START_ON
-	#if TRIE_DEBUG <= DEBUG_LEVEL_INFO
-		#define TEST_START_ON 1
-	#endif
-#endif
-
-#ifdef TEST_START_ON
-#define TEST_START() LOG("Starting Test:%s", __FUNCTION__)
-#else
-#define TEST_START() (void)0
-#endif
-
 #if TRIE_DEBUG <= DEBUG_LEVEL_ERROR
 #define TRIE_ERROR(s, ...) LOG(s, __VA_ARGS__)
 #define TRIE_ERROR_F(s) s
@@ -62,7 +50,8 @@ Printouts include file/line information.
 #define PROOF_INFO_F(s) (void)0
 #endif
 
-namespace debug {
+namespace trie {
+namespace detail {
 //! Convert a byte array to a hex string.
 static std::string array_to_str(const unsigned char* array, const int len) {
 	std::stringstream s;
@@ -81,7 +70,8 @@ array_to_str(const ArrayLike& array)
 	return array_to_str(array.data(), array.size());
 }
 
-} /* namespace debug */
+} /* namespace detail */
+} /* namespace trie */
 
 
 

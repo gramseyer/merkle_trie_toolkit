@@ -116,3 +116,47 @@ TEST_CASE("uint64_truncate", "[prefix]")
 	key_buf.truncate(PrefixLenBits{12});
 	REQUIRE(key_buf == key_buf2);
 }
+
+TEST_CASE("uint64 byte at", "[prefix]")
+{
+	UInt64Prefix key_buf{0};
+
+	key_buf.at(0) = 0xAA;
+	key_buf.at(5) = 0xBB;
+	key_buf.at(7) = 0xCC;
+
+	REQUIRE_THROWS(key_buf.at(8));
+
+	REQUIRE(key_buf.uint64() == 0xCC00BB00'000000AA);
+
+	UInt64Prefix key2{0};
+
+	write_unsigned_little_endian(key2, 0xCC00BB00'000000AA);
+
+	REQUIRE(key2 == key_buf);
+
+	UInt64Prefix key3{0};
+
+	write_unsigned_big_endian(key3, 0xAA000000'00BB00CC);
+
+	REQUIRE(key3 == key_buf);
+
+}
+
+TEST_CASE("byteprefix byte at", "[prefix]")
+{
+	ByteArrayPrefix<8> key_buf;
+
+	key_buf.at(0) = 0xAA;
+	key_buf.at(5) = 0xBB;
+	key_buf.at(7) = 0xCC;
+
+	REQUIRE_THROWS(key_buf.at(8));
+
+	uint64_t expect = 0xCC00BB00'000000AA;
+
+	ByteArrayPrefix<8> key_buf2;
+	write_unsigned_little_endian(key_buf2, expect);
+
+	REQUIRE(key_buf == key_buf2);
+}
