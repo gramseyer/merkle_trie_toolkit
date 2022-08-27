@@ -14,12 +14,8 @@ Printouts include file/line information.
 
 #define TRIE_LOG(s, ...) std::printf((std::string("%-45s") + s + "\n").c_str(), (std::string(__FILE__) + "." + std::to_string(__LINE__) + ":").c_str() __VA_OPT__(,) __VA_ARGS__)
 
-#ifndef LOG
-#define LOG(s, ...) TRIE_LOG(s, __VA_ARGS__)
-#endif
-
 #if TRIE_DEBUG <= DEBUG_LEVEL_ERROR
-#define TRIE_ERROR(s, ...) LOG(s, __VA_ARGS__)
+#define TRIE_ERROR(s, ...) TRIE_LOG(s, __VA_ARGS__)
 #define TRIE_ERROR_F(s) s
 #else
 #define TRIE_ERROR(s, ...) (void)0
@@ -27,7 +23,7 @@ Printouts include file/line information.
 #endif
 
 #if TRIE_DEBUG <= DEBUG_LEVEL_INFO
-#define TRIE_INFO(s, ...) LOG(s, __VA_ARGS__)
+#define TRIE_INFO(s, ...) TRIE_LOG(s, __VA_ARGS__)
 #define TRIE_INFO_F(s) s
 #else
 #define TRIE_INFO(s, ...) (void)0
@@ -35,7 +31,7 @@ Printouts include file/line information.
 #endif
 
 #if PROOF_DEBUG <= DEBUG_LEVEL_ERROR
-#define PROOF_ERROR(s, ...) LOG(s, __VA_ARGS__)
+#define PROOF_ERROR(s, ...) TRIE_LOG(s, __VA_ARGS__)
 #define PROOF_ERROR_F(s) s
 #else
 #define PROOF_ERROR(s, ...) (void)0
@@ -43,7 +39,7 @@ Printouts include file/line information.
 #endif
 
 #if PROOF_DEBUG <= DEBUG_LEVEL_INFO
-#define PROOF_INFO(s, ...) LOG(s, __VA_ARGS__)
+#define PROOF_INFO(s, ...) TRIE_LOG(s, __VA_ARGS__)
 #define PROOF_INFO_F(s) s
 #else
 #define PROOF_INFO(s, ...) (void)0

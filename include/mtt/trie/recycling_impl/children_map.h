@@ -87,7 +87,7 @@ private:
 		}
 
 		void log(std::string padding) {
-			LOG("%schildren map: bv 0x%x base_ptr_offset 0x%x", padding.c_str(), bv.get(), base_ptr_offset);
+			TRIE_LOG("%schildren map: bv 0x%x base_ptr_offset 0x%x", padding.c_str(), bv.get(), base_ptr_offset);
 		}
 	};
 
@@ -158,10 +158,10 @@ public:
 		} else if (tag == MAP) {
 			children.log(padding);
 		} else if (tag == STOLEN) {
-			LOG("%sSTOLEN to %x", padding.c_str(), moved_to_location);
+			TRIE_LOG("%sSTOLEN to %x", padding.c_str(), moved_to_location);
 		} else {
 			//tag == CLEARED
-			LOG("%sCLEARED NODE!!!", padding.c_str());
+			TRIE_LOG("%sCLEARED NODE!!!", padding.c_str());
 		}
 	}
 

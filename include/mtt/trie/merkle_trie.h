@@ -298,19 +298,19 @@ public:
 	}	
 
 	void print_offsets() {
-		LOG("children   %lu %lu", 
+		TRIE_LOG("children   %lu %lu", 
 			offsetof(TrieNode, children), sizeof(children));
-		LOG("locks      %lu %lu", 
+		TRIE_LOG("locks      %lu %lu", 
 			offsetof(TrieNode, locks), sizeof(locks));
-		LOG("prefix     %lu %lu", 
+		TRIE_LOG("prefix     %lu %lu", 
 			offsetof(TrieNode, prefix), sizeof(prefix));
-		LOG("prefix_len %lu %lu", 
+		TRIE_LOG("prefix_len %lu %lu", 
 			offsetof(TrieNode, prefix_len), sizeof(prefix_len));	
-		LOG("metadata   %lu %lu", 
+		TRIE_LOG("metadata   %lu %lu", 
 			offsetof(TrieNode, metadata), sizeof(metadata));	
-		LOG("hash       %lu %lu", 
+		TRIE_LOG("hash       %lu %lu", 
 			offsetof(TrieNode, hash), sizeof(hash));	
-		LOG("hash_valid %lu %lu", 
+		TRIE_LOG("hash_valid %lu %lu", 
 			offsetof(TrieNode, hash_valid), sizeof(hash_valid));
 	}
 
@@ -982,7 +982,7 @@ public:
 
 			auto str = detail::array_to_str(buf.data(), buf.size());
 
-			LOG("%s root hash: %s", padding.c_str(), str.c_str());
+			TRIE_LOG("%s root hash: %s", padding.c_str(), str.c_str());
 		}
 		root->_log(padding);
 	}
@@ -1482,12 +1482,12 @@ public:
 
 TEMPLATE_SIGNATURE
 void TrieNode<TEMPLATE_PARAMS>::_log(std::string padding) const {
-	LOG("%sprefix %s (len %d bits)",
+	TRIE_LOG("%sprefix %s (len %d bits)",
 		padding.c_str(), 
 		prefix.to_string(prefix_len).c_str(),
 		prefix_len.len);
 	if (get_hash_valid()) {
-		LOG("%snode hash is: %s", 
+		TRIE_LOG("%snode hash is: %s", 
 			padding.c_str(), detail::array_to_str(hash.data(), 32).c_str());
 	}
 	if (prefix_len == MAX_KEY_LEN_BITS) {
@@ -1496,18 +1496,18 @@ void TrieNode<TEMPLATE_PARAMS>::_log(std::string padding) const {
 		//value.serialize();
 		value.copy_data(buf);
 		auto str = detail::array_to_str(buf.data(), buf.size());
-		LOG("%svalue serialization is %s", padding.c_str(), str.c_str());
+		TRIE_LOG("%svalue serialization is %s", padding.c_str(), str.c_str());
 		buf.clear();
 	}
-	LOG("%saddress: %p", padding.c_str(), this);
-	LOG("%smetadata: %s", padding.c_str(), metadata.to_string().c_str());
-	LOG("%snum children: %d, is_frozen: %d, bv: %x",
+	TRIE_LOG("%saddress: %p", padding.c_str(), this);
+	TRIE_LOG("%smetadata: %s", padding.c_str(), metadata.to_string().c_str());
+	TRIE_LOG("%snum children: %d, is_frozen: %d, bv: %x",
 		padding.c_str(), children.size(), 0, children.get_bv());
 
 	for (unsigned int bits = 0; bits <= MAX_BRANCH_VALUE; bits++) {
 		auto iter = children.find(bits);
 		if (iter != children.end()) {
-			LOG("%schild: %x, parent_status:%s",
+			TRIE_LOG("%schild: %x, parent_status:%s",
 				padding.c_str(), 
 				(*iter).first, (((*iter).second)?"true":"false"));
 			(*iter).second->_log(padding+" |    ");

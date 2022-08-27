@@ -139,7 +139,7 @@ TEST_CASE("batch merge", "[.perf]")
 
 		auto runtime = utils::measure_time(ts);
 
-		LOG("%u threads init=%f merge=%f", cnt, inittime, runtime);
+		TRIE_LOG("%u threads init=%f merge=%f", cnt, inittime, runtime);
 
 		REQUIRE (trie.size() == experiment_sz);
 	}

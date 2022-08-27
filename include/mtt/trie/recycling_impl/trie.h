@@ -402,15 +402,15 @@ public:
 
 	template<typename allocator_or_context_t>
 	void log(std::string padding, allocator_or_context_t& allocator) {
-		LOG("%sprefix %s (len %u bits)", 
+		TRIE_LOG("%sprefix %s (len %u bits)", 
 			padding.c_str(),
 			prefix.to_string(prefix_len).c_str(),
 			prefix_len.len);
-		LOG("%ssz: %ld", padding.c_str(), size());
+		TRIE_LOG("%ssz: %ld", padding.c_str(), size());
 		children.log(padding);
 		//LOG("%sthis_ptr: %x", padding.c_str(), this_ptr);
 		for (auto iter = children.begin(); iter != children.end(); iter++) {
-			LOG("%schild: child_bb %x, ptr 0x%x", padding.c_str(), (*iter).first, (*iter).second);
+			TRIE_LOG("%schild: child_bb %x, ptr 0x%x", padding.c_str(), (*iter).first, (*iter).second);
 			allocator.get_object((*iter).second).log(padding + " |   ", allocator);
 		}
 	}
