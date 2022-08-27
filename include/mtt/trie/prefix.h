@@ -117,7 +117,7 @@ Prefix is broken into pieces of width BRANCH_BITS, although
 in practice we always use BRANCH_BITS=4.
 */
 template<uint16_t MAX_LEN_BYTES, uint8_t BRANCH_BITS = 4>
-struct ByteArrayPrefix {
+class ByteArrayPrefix {
 
 	static_assert(std::endian::native == std::endian::little, "big endian unimplemented");
 	static_assert(BRANCH_BITS == 4, "unimplemented otherwise");
@@ -131,6 +131,8 @@ struct ByteArrayPrefix {
 
 	constexpr static uint64_t BRANCH_MASK 
 		= (((uint64_t)1) << (BRANCH_BITS)) - 1;
+
+public:
 
 	ByteArrayPrefix()
 		: data() {
@@ -274,6 +276,7 @@ struct ByteArrayPrefix {
 	}
 
 	//! Return a vector of bytes with the prefix's contents.
+	//! Note: results are in little-endian order.  Should not be used externally.
 	std::vector<unsigned char> get_bytes(const PrefixLenBits prefix_len) const {
 		std::vector<unsigned char> bytes_out;
 
@@ -290,6 +293,7 @@ struct ByteArrayPrefix {
 		return MAX_LEN_BYTES;
 	}
 
+/*
 	//! memcpy into this prefix from a given buffer.
 	void set_from_raw(const unsigned char* src, size_t len) {
 		auto* dst = reinterpret_cast<unsigned char*>(data.data());
@@ -298,7 +302,7 @@ struct ByteArrayPrefix {
 		}
 		std::memcpy(dst, src, len); 
 	}
-
+*/
 
 	constexpr static PrefixLenBits len() {
 		return PrefixLenBits{MAX_LEN_BITS};
@@ -429,8 +433,28 @@ public:
 		return out;
 	}
 
+	void
+	from_bytes_array(const std::vector<uint8_t>& bytes)
+	{
+		if (bytes.size() != MAX_LEN_BYTES)
+		{
+			throw std::runtime_error("invalid initialization from_bytes_array");
+		}
+
+		utils::read_unsigned_big_endian(bytes, prefix);
+	}
+
 	//! Bounds checked byte access.
-	unsigned char& at(size_t i) {
+	uint8_t at(size_t i) const {
+		if (i >= MAX_LEN_BYTES) {
+			throw std::runtime_error("invalid prefix array access!");
+		}
+
+		const unsigned char* data_ptr = reinterpret_cast<const uint8_t*>(&prefix);
+		return data_ptr[i];
+	}
+
+	uint8_t& at(size_t i) {
 		if (i >= MAX_LEN_BYTES) {
 			throw std::runtime_error("invalid prefix array access!");
 		}
@@ -439,6 +463,7 @@ public:
 		return data_ptr[i];
 	}
 
+	// should not be used externally. returns results in little-endian order.
 	std::vector<uint8_t> get_bytes(PrefixLenBits const& prefix_len_bits) const {
 		std::vector<uint8_t> out;
 		auto full = get_bytes_array<std::array<uint8_t, MAX_LEN_BYTES>>();

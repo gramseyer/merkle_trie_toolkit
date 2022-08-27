@@ -532,6 +532,32 @@ public:
 		}
 	}
 
+	const ValueType*
+	get_value(const prefix_t& query, const allocator_t& allocator) const
+	{
+		auto prefix_match_len = get_prefix_match_len(query);
+
+		if (prefix_len == MAX_KEY_LEN_BITS)
+		{
+			if (prefix_match_len != prefix_len)
+			{
+				return nullptr;
+			}
+			return &children.value(allocator);
+		}
+
+		auto branch_bits = get_branch_bits(query);
+
+		auto iter = children.find(branch_bits);
+
+		if (iter != children.end()) {
+			auto& child = allocator.get_object((*iter).second);
+			return child.get_value(query, allocator);
+		} else {
+			return nullptr;
+		}
+	}
+
 	/* test */
 
 	metadata_t
@@ -638,6 +664,7 @@ class RecyclingTrie {
 public:
 	using node_t = RecyclingTrieNode<ValueType, PrefixT, ExtraMetadata>;
 	using ptr_t = node_t::ptr_t;
+	using prefix_t = PrefixT;
 	using serial_trie_t = SerialRecyclingTrie<ValueType, PrefixT, ExtraMetadata>;
 	using metadata_t = RecyclingTrieNodeMetadata<ExtraMetadata>;
 private:
@@ -781,6 +808,38 @@ public:
 	}
 
 	template<typename ValueModifyFn>
+	void parallel_apply(ValueModifyFn const& fn)
+	{
+		auto apply_lambda = [&fn] (ApplyableSubnodeRef<node_t>& work_root)
+		{
+			work_root.apply(fn);
+		};
+		parallel_batch_value_modify(apply_lambda);
+	}
+
+	template<typename ValueModifyFn>
+	void parallel_batch_value_modify(ValueModifyFn& fn) {
+
+		std::lock_guard lock(mtx);
+		if (root == UINT32_MAX) {
+			// trie is null, nothing to parallel_batch_value_modify
+			return;
+		}
+
+		AccountApplyRange<node_t> range(root, allocator);
+		//guaranteed that range.work_list contains no overlaps
+
+		tbb::parallel_for(
+			range,
+			[&fn, this] (const auto& range) {
+				for (unsigned int i = 0; i < range.work_list.size(); i++) {
+					ApplyableSubnodeRef ref{range.work_list[i], allocator};
+					fn(ref);
+				}
+			});
+	}
+
+	template<typename ValueModifyFn>
 	void parallel_batch_value_modify(ValueModifyFn& fn) const {
 
 		std::lock_guard lock(mtx);
@@ -843,6 +902,15 @@ public:
 		}
 		auto const& ref = allocator.get_object(root);
 		ref.test_metadata_integrity_check(allocator);
+	}
+
+	const ValueType* get_value(const prefix_t& query) const
+	{
+		if (root == UINT32_MAX)
+		{
+			return nullptr;
+		}
+		return allocator.get_object(root).get_value(query, allocator);
 	}
 
 };

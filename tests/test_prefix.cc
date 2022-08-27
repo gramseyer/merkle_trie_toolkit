@@ -160,3 +160,32 @@ TEST_CASE("byteprefix byte at", "[prefix]")
 
 	REQUIRE(key_buf == key_buf2);
 }
+
+TEST_CASE("uint64 from_bytes_array", "[prefix]")
+{
+	UInt64Prefix key;
+
+	uint64_t value = 0xAABBCCDDEEFF0011;
+
+	write_unsigned_big_endian(key, value);
+
+	auto res = key.template get_bytes_array<std::array<uint8_t, 8>>();
+
+	std::vector<uint8_t> input(res.begin(), res.end());
+
+	REQUIRE(input.size() == 8);
+
+	UInt64Prefix key2;
+	key2.from_bytes_array(input);
+	REQUIRE(key == key2);
+
+	uint64_t query;
+	read_unsigned_big_endian(key, query);
+	REQUIRE(query == value);
+	query = 0;
+	read_unsigned_big_endian(key2, query);
+	REQUIRE(query == value);
+
+
+}
+

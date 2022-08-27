@@ -79,7 +79,7 @@ static void read_unsigned_big_endian(const ArrayLike& buf, T& output) {
 	output = 0;
 	for (uint8_t loc = 0; loc < sz; loc++) {
 		output<<=8;
-		output+=buf[loc];
+		output+=buf.at(loc);
 	}
 }
 
