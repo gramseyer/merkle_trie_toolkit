@@ -443,15 +443,12 @@ public:
 	//! returns nullptr if not present
 	ValueType*
 	get_value(const prefix_t& query_key);
-		//typename std::enable_if<HAS_VALUE, int>::type* = nullptr);
 
 	//! Get the value associated with a given key.
 	//! throws if key is not present
 	
-	//template<bool x = HAS_VALUE>
-	//ValueType const&
-	//get_value_nolocks(typename std::enable_if<x, const prefix_t&>::type query_key) const;
-
+	const ValueType*
+	get_value_nolocks(const prefix_t& query_key) const;
 
 	void append_hash_to_vec(std::vector<unsigned char>& buf) {
 		[[maybe_unused]]
@@ -1178,15 +1175,20 @@ public:
 
 		return root -> get_value(query_key);
 	}
-/*
-	template<bool x = HAS_VALUE>
-	ValueType const&
+
+	const ValueType*
 	get_value_nolocks(
-		typename std::enable_if<x, const prefix_t&>::type query_key) const {
-		static_assert(x == HAS_VALUE, "no funny business");
+		const prefix_t& query_key) const {
+		static_assert(HAS_VALUE, "no funny business");
 
 		return root -> get_value_nolocks(query_key);
-	} */
+	} 
+
+	ValueType* get_value_nolocks(
+		const prefix_t& query_key) {
+
+		return const_cast<ValueType*>(const_cast<const MerkleTrie*>(this) -> get_value_nolocks(query_key));
+	}
 
 	template<typename VectorType>
 	VectorType accumulate_values() const {
@@ -4062,30 +4064,27 @@ TrieNode<TEMPLATE_PARAMS>::get_value(
 	return (*iter).second->get_value(query_key);
 }
 
-/*
+
 
 TEMPLATE_SIGNATURE
-template<bool x>
-ValueType const&
+const ValueType*
 TrieNode<TEMPLATE_PARAMS>::get_value_nolocks(
-	typename std::enable_if<x, const prefix_t&>::type query_key) const {
-	
-	[[maybe_unused]]
-	auto lock = locks.template lock<TrieNode::shared_lock_t> ();
+	const prefix_t& query_key) const {
 
 	if (prefix_len == MAX_KEY_LEN_BITS) {
-		return children.value();
+		return &(children.value());
 	}
 
 	auto branch_bits = get_branch_bits(query_key);
 
 	auto iter = children.find(branch_bits);
 	if (iter == children.end()) {
-		throw std::runtime_error("tried to get value not present in trie");
+		return nullptr;
+		//throw std::runtime_error("tried to get value not present in trie");
 	}
 
 	return (*iter).second->get_value_nolocks(query_key);
-} */
+} 
 
 TEMPLATE_SIGNATURE
 template<typename VectorType>
