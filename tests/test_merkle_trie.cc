@@ -26,7 +26,6 @@ TEST_CASE("insert" , "[trie]")
 	mt trie;
 	mt :: prefix_t key_buf;
 
-
 	for (unsigned char i = 0; i < 10; i++) {
 		std::array<unsigned char, 32> buf;
 		crypto_generichash(buf.data(), buf.size(), &i, 1, NULL, 0);

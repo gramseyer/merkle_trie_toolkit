@@ -442,8 +442,8 @@ public:
 	//! Get the value associated with a given key
 	//! returns nullptr if not present
 	ValueType*
-	get_value(const prefix_t& query_key,
-		typename std::enable_if<HAS_VALUE, int>::type* = nullptr);
+	get_value(const prefix_t& query_key);
+		//typename std::enable_if<HAS_VALUE, int>::type* = nullptr);
 
 	//! Get the value associated with a given key.
 	//! throws if key is not present
@@ -1152,8 +1152,8 @@ public:
 	}
 
 	ValueType* get_value(
-		const prefix_t& query_key, 
-		typename std::enable_if<HAS_VALUE, int>::type* = nullptr) {
+		const prefix_t& query_key) {
+//		typename std::enable_if<HAS_VALUE, int>::type* = nullptr) {
 	//template<bool x = HAS_VALUE>
 	//ValueType* get_value(
 	//	typename std::enable_if<x, const prefix_t&>::type query_key) {
@@ -1167,8 +1167,10 @@ public:
 	}
 
 	const ValueType* get_value(
-		const prefix_t& query_key, 
-		typename std::enable_if<HAS_VALUE, int>::type* = nullptr) const {
+		const prefix_t& query_key) const {
+		//typename std::enable_if<HAS_VALUE, int>::type* = nullptr) const {
+
+		static_assert(HAS_VALUE, "must have value to get value");
 		//typename std::enable_if<x, const prefix_t&>::type query_key) const {
 	//	static_assert(x == HAS_VALUE, "no funny business");
 
@@ -4039,8 +4041,8 @@ TrieNode<TEMPLATE_PARAMS>::get_lowest_key() {
 TEMPLATE_SIGNATURE
 ValueType*
 TrieNode<TEMPLATE_PARAMS>::get_value(
-	const prefix_t& query_key,
-	typename std::enable_if<HAS_VALUE, int>::type*) {
+	const prefix_t& query_key) {
+	//typename std::enable_if<HAS_VALUE, int>::type*) {
 	
 	[[maybe_unused]]
 	auto lock = locks.template lock<TrieNode::shared_lock_t> ();
