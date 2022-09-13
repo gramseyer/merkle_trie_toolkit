@@ -70,17 +70,6 @@ public:
 		return *objects[idx];
 	}
 
-	template<typename... ctor_args>
-	ValueType& get_index(uint8_t idx, ctor_args&... args) {
-		if (idx >= CACHE_SIZE) {
-			throw std::runtime_error("invalid tlcache access!");
-		}
-		if (!objects[idx]) {
-			objects[idx].emplace(args...);
-		}
-		return *objects[idx];
-	}
-
 	//! At times it is useful to export the list of cached objects
 	//! all at once.
 	std::array<std::optional<ValueType>, CACHE_SIZE>& 
