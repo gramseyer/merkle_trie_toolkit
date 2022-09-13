@@ -179,7 +179,7 @@ struct SizeMixin {
 	int64_t size;
 
 	template<typename ValueType>
-	SizeMixin(ValueType v) : size(1) {}
+	SizeMixin(ValueType const& v) : size(1) {}
 
 	SizeMixin() : size(0) {}
 
@@ -348,7 +348,7 @@ struct CombinedMetadata : public MetadataComponents... {
 	using AtomicT = AtomicCombinedMetadata<MetadataComponents...>;
 
 	template<typename ValueType>
-	CombinedMetadata(ValueType v) : MetadataComponents(v)... {}
+	CombinedMetadata(ValueType const& v) : MetadataComponents(v)... {}
 
 	CombinedMetadata() : MetadataComponents()... {}
 
@@ -412,7 +412,7 @@ struct AtomicCombinedMetadata : public MetadataComponents::AtomicT... {
 	using MetadataComponents::AtomicT::unsafe_store...;
 
 	template<typename ValueType>
-	AtomicCombinedMetadata(ValueType value)
+	AtomicCombinedMetadata(ValueType const& value)
 		: MetadataComponents::AtomicT(value)... {}
 
 	AtomicCombinedMetadata() : MetadataComponents::AtomicT()...{}
