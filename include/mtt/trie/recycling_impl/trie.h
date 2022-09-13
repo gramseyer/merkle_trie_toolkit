@@ -26,8 +26,7 @@
 
 #include "mtt/trie/types.h"
 
-/* TODO add metadata to this
-
+/*
  Turns out that for this particular trie setup,
  we don't need metadata to be atomic
  because every time we update it
@@ -157,7 +156,6 @@ private:
 	friend children_map_t;
 
 	constexpr static uint8_t KEY_LEN_BYTES = PrefixT::size_bytes();
-	//static_assert(KEY_LEN_BYTES == 8, "invalid keylen (bunch of stuff to fix if change)");
 
 	constexpr static uint8_t MAX_BRANCH_VALUE = 0xF;
 
