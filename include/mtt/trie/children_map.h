@@ -138,7 +138,7 @@ public:
 				new (&value_) ValueType();
 				value_active = true;
 			}
-			value_ = other.value_;
+			value_ = std::move(other.value_);
 		} else /* !other.value_active */{
 			if (value_active) {
 				value_.~ValueType();
