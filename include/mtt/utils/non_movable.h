@@ -1,8 +1,8 @@
 #pragma once
 
-/**     
+/**
  * based on stellar-core src/util/NonCopyable.h
- * 
+ *
  * Original license notification
  * ```
  * Copyright 2015 Stellar Development Foundation and contributors. Licensed
@@ -13,8 +13,7 @@
  * repository.
  */
 
-namespace utils
-{
+namespace utils {
 
 struct NonCopyable
 {
@@ -30,8 +29,10 @@ struct NonMovable
     NonMovable& operator=(NonMovable&&) = delete;
 };
 
-struct NonMovableOrCopyable : private NonCopyable, NonMovable
+struct NonMovableOrCopyable
+    : private NonCopyable
+    , NonMovable
 {
     NonMovableOrCopyable() = default;
 };
-}
+} // namespace utils
