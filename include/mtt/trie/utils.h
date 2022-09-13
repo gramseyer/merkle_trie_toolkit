@@ -119,7 +119,21 @@ struct GenericInsertFn {
 	static ValueType new_value(const prefix_t& prefix) {
 		return ValueType{};
 	}
-}; 
+};
+
+struct NoDuplicateKeysMergeFn
+{
+	template<typename ValueType>
+	static void value_merge(ValueType& main_value, const ValueType& other_value) {
+		throw std::runtime_error("no duplicate keys allowed");
+	}
+
+	template<typename AtomicMetadataType>
+	static typename AtomicMetadataType::BaseT 
+	metadata_merge(AtomicMetadataType& main_metadata, const AtomicMetadataType& other_metadata) {
+		throw std::runtime_error("no duplicate keys allowed");
+	}
+};
 
 //can call unsafe methods bc exclusive locks on metadata inputs in caller
 struct OverwriteMergeFn {
