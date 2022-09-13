@@ -273,7 +273,7 @@ public:
 
 		return std::make_unique<TrieNode>(
 			key, 
-			value_out, 
+			std::move(value_out), 
 			metadata);
 	}
 
@@ -399,11 +399,11 @@ public:
 	}
 
 	//! Returns value at node.  Throws error if not a leaf.
-	ValueType& get_value() const {
+	ValueType* get_value() {
 		if (!is_leaf()) {
 			throw std::runtime_error("can't get value from non leaf");
 		}
-		return children.value();
+		return &(children.value());
 	}
 
 	//! Construct an empty trie node (0 prefix, 0 prefix_len).
@@ -434,21 +434,23 @@ public:
 		typename std::enable_if<!x, const prefix_t&>::type key);
 
 	//! Computes hash for this node.
-	//! Implicitly computes hashes for any children with invalied cached
+	//! Implicitly computes hashes for any children with invalid cached
 	//! hashes.  Operates serially.
 	template<typename... ApplyToValueBeforeHashFn>
 	void compute_hash();
 
-	//! Get the value associated with a given key.
-	template<bool x = HAS_VALUE>
-	std::optional<ValueType> 
-	get_value(typename std::enable_if<x, const prefix_t&>::type query_key) const;
+	//! Get the value associated with a given key
+	//! returns nullptr if not present
+	ValueType*
+	get_value(const prefix_t& query_key,
+		typename std::enable_if<HAS_VALUE, int>::type* = nullptr);
 
 	//! Get the value associated with a given key.
 	//! throws if key is not present
-	template<bool x = HAS_VALUE>
-	ValueType const&
-	get_value_nolocks(typename std::enable_if<x, const prefix_t&>::type query_key) const;
+	
+	//template<bool x = HAS_VALUE>
+	//ValueType const&
+	//get_value_nolocks(typename std::enable_if<x, const prefix_t&>::type query_key) const;
 
 
 	void append_hash_to_vec(std::vector<unsigned char>& buf) {
@@ -607,6 +609,9 @@ public:
 	void
 	invalidate_hash_to_node_nolocks(TrieNode* target);
 
+	void
+	invalidate_hash_to_key_nolocks(const prefix_t& query_key);
+
 
 
 	//! unsafe, but don't be a fool this doesn't run in prod
@@ -681,6 +686,9 @@ public:
 	typename std::enable_if<
 		x, std::tuple<MetadataType, std::optional<ValueType>>>::type
 	mark_for_deletion(const prefix_t key);
+
+	std::optional<MetadataType>
+	mark_for_deletion_nolocks(const prefix_t& key);
 
 	//! Unmarks a particular node for deletion.
 	//! Returns the undeleted value, if said value was present.
@@ -1143,16 +1151,32 @@ public:
 		return root -> get_metadata_unsafe(); // ok bc exclusive lock on trie
 	}
 
-	template<bool x = HAS_VALUE>
-	std::optional<ValueType> get_value(
-		typename std::enable_if<x, const prefix_t&>::type query_key) const {
-		static_assert(x == HAS_VALUE, "no funny business");
+	ValueType* get_value(
+		const prefix_t& query_key, 
+		typename std::enable_if<HAS_VALUE, int>::type* = nullptr) {
+	//template<bool x = HAS_VALUE>
+	//ValueType* get_value(
+	//	typename std::enable_if<x, const prefix_t&>::type query_key) {
+	//	static_assert(x == HAS_VALUE, "no funny business");
+
+		return const_cast<ValueType*>(const_cast<const MerkleTrie*>(this) -> get_value(query_key));
+
+	//	std::shared_lock lock(*hash_modify_mtx);
+
+	//	return root -> get_value(query_key);
+	}
+
+	const ValueType* get_value(
+		const prefix_t& query_key, 
+		typename std::enable_if<HAS_VALUE, int>::type* = nullptr) const {
+		//typename std::enable_if<x, const prefix_t&>::type query_key) const {
+	//	static_assert(x == HAS_VALUE, "no funny business");
 
 		std::shared_lock lock(*hash_modify_mtx);
 
 		return root -> get_value(query_key);
 	}
-
+/*
 	template<bool x = HAS_VALUE>
 	ValueType const&
 	get_value_nolocks(
@@ -1160,7 +1184,7 @@ public:
 		static_assert(x == HAS_VALUE, "no funny business");
 
 		return root -> get_value_nolocks(query_key);
-	}
+	} */
 
 	template<typename VectorType>
 	VectorType accumulate_values() const {
@@ -1205,14 +1229,19 @@ public:
 	}
 
 
-	// this versions returns nullptr if there's not an exact match for query_prefix.
-	// An alternative would be to return a higher node.
+	// Returns a TrieT* with a prefix that is not longer than query_len_bits
+	// and that contains the entirety of query_prefix beneath it.
+	// never returns nullptr.
  	TrieT*	
 	get_subnode_ref_nolocks(
 		const prefix_t query_prefix, const PrefixLenBits query_len_bits) {
 		
 		auto res = root 
 			-> get_subnode_ref_nolocks(query_prefix, query_len_bits);
+		if (res == nullptr)
+		{
+			return root.get();
+		}
 
 		return res;
 	}
@@ -1309,6 +1338,20 @@ public:
 		}
 
 		return value_out;
+	}
+
+	bool
+	mark_for_deletion_nolocks(const prefix_t& key)
+	{
+		static_assert(METADATA_DELETABLE, "cannot delete without deletion metadata");
+
+		auto res = root -> mark_for_deletion_nolocks(key);
+		if (res)
+		{
+			invalidate_hash();
+			return true;
+		}
+		return false;
 	}
 
 	template<bool x = METADATA_DELETABLE>
@@ -1964,7 +2007,7 @@ MerkleTrie<TEMPLATE_PARAMS>::batch_merge_in(
 		return;
 	}
 
-	batch_merge_in(std::move(tries));
+	batch_merge_in<MergeFn>(std::move(tries));
 
 	tl_cache.clear();
 }
@@ -2081,6 +2124,25 @@ TrieNode<TEMPLATE_PARAMS>::invalidate_hash_to_node_nolocks(TrieNode* target) {
 	}
 
 	(*iter).second -> invalidate_hash_to_node_nolocks(target);
+}
+
+TEMPLATE_SIGNATURE
+void
+TrieNode<TEMPLATE_PARAMS>::invalidate_hash_to_key_nolocks(const prefix_t& query_key) {
+	invalidate_hash(); // invalidate hash is threadsafe
+	if (prefix_len == MAX_KEY_LEN_BITS) {
+		return;
+	}
+
+	auto branch_bits = get_branch_bits(query_key);
+
+	auto iter = children.find(branch_bits);
+	if (iter == children.end()) {
+		throw std::runtime_error(
+			"can't invalidate hash to nonexistent node");
+	}
+
+	(*iter).second -> invalidate_hash_to_key_nolocks(query_key);
 }
 
 TEMPLATE_SIGNATURE
@@ -2700,6 +2762,54 @@ TrieNode<TEMPLATE_PARAMS>::unmark_for_deletion(const prefix_t key) {
 }
 
 TEMPLATE_SIGNATURE
+std::optional<MetadataType>
+TrieNode<TEMPLATE_PARAMS>::mark_for_deletion_nolocks(const prefix_t& key)
+{
+	auto prefix_match_len = get_prefix_match_len(key);
+	if (prefix_match_len < prefix_len)
+	{
+		//incomplete match, so key nexist
+		return std::nullopt;
+	}
+	if (prefix_match_len == MAX_KEY_LEN_BITS)
+	{
+		auto swap_lambda = [] (AtomicDeletableMixin& object) {
+			AtomicDeletableMixin::BaseT::value_t expect = 0, desired = 1;
+			return AtomicDeletableMixin::compare_exchange(
+				object, expect, desired);
+		};
+		bool res = swap_lambda(metadata);
+		//swaps 0 to 1 if it's 0, otherwise it's 1 already.
+		auto meta_out = MetadataType();
+		meta_out.num_deleted_subnodes = res?1:0;
+		if (!res) {
+			return meta_out;
+			//hash not invalidated because nothing deleted
+		} else {
+			invalidate_hash();
+			return meta_out;
+		}
+	}
+
+	auto branch_bits = get_branch_bits(key);
+
+	auto iter = children.find(branch_bits);
+	if (iter == children.end()) {
+		return std::nullopt;
+		//hash not invalidated because nothing marked as deleted
+	}
+
+	invalidate_hash();
+	auto res = (*iter).second->mark_for_deletion_nolocks(key);
+
+	if (res) {
+		invalidate_hash();
+		update_metadata(*res);
+	}
+	return res;
+}
+
+TEMPLATE_SIGNATURE
 template<bool x>
 typename std::enable_if<x, std::tuple<MetadataType, std::optional<ValueType>>>::type
 TrieNode<TEMPLATE_PARAMS>::mark_for_deletion(const prefix_t key) {
@@ -3315,26 +3425,34 @@ TrieNode<TEMPLATE_PARAMS>::get_subnode_ref_nolocks(
 
 	auto prefix_match_len = get_prefix_match_len(query_prefix, query_len);
 
-	if (prefix_match_len == query_len) {
-		return this;
-	}
+	// prefix_match_len <= prefix_len
 
-	if (prefix_match_len > prefix_len) {
-		throw std::runtime_error("cannot happen!");
-	}
-
-	if (prefix_match_len < prefix_len) {
+	if (prefix_match_len < prefix_len)
+	{
 		return nullptr;
 	}
 
+	//prefix_match_len == prefix_len
+	// need to see now if there's a better match below
+
+
+
+	if (prefix_match_len == query_len) {
+		//implies query_len == prefix_len
+		return this;
+	}
+
+	// redundant check
 	if (prefix_match_len == prefix_len) {
+
+		// prefix_len < query_len, implicitly
+
 		auto bb = get_branch_bits(query_prefix);
 		auto iter = children.find(bb);
 		if (iter == children.end()) {
-			// can't recurse down nexist subtree, returning nullptr
-			return nullptr;
-			//throw std::runtime_error("can't recurse down nonexistent subtree!");
+			return this;
 		}
+
 		if (!(*iter).second) {
 			_log("bad node: ");
 			throw std::runtime_error("found a null iter in get_subnode_ref_nolocks");
@@ -3342,6 +3460,11 @@ TrieNode<TEMPLATE_PARAMS>::get_subnode_ref_nolocks(
 
 		auto child_candidate = (*iter).second 
 				 -> get_subnode_ref_nolocks(query_prefix, query_len);
+		
+		if (child_candidate == nullptr)
+		{
+			return this;
+		}
 		return child_candidate;
 	}
 	std::printf("invalid recursion\n");
@@ -3914,27 +4037,30 @@ TrieNode<TEMPLATE_PARAMS>::get_lowest_key() {
 }
 
 TEMPLATE_SIGNATURE
-template<bool x>
-std::optional<ValueType> 
+ValueType*
 TrieNode<TEMPLATE_PARAMS>::get_value(
-	typename std::enable_if<x, const prefix_t&>::type query_key) const {
+	const prefix_t& query_key,
+	typename std::enable_if<HAS_VALUE, int>::type*) {
 	
 	[[maybe_unused]]
 	auto lock = locks.template lock<TrieNode::shared_lock_t> ();
 
 	if (prefix_len == MAX_KEY_LEN_BITS) {
-		return std::make_optional(children.value());
+		return get_value();
+		//return std::make_optional(children.value());
 	}
 
 	auto branch_bits = get_branch_bits(query_key);
 
 	auto iter = children.find(branch_bits);
 	if (iter == children.end()) {
-		return std::nullopt;
+		return nullptr;
 	}
 
 	return (*iter).second->get_value(query_key);
 }
+
+/*
 
 TEMPLATE_SIGNATURE
 template<bool x>
@@ -3957,7 +4083,7 @@ TrieNode<TEMPLATE_PARAMS>::get_value_nolocks(
 	}
 
 	return (*iter).second->get_value_nolocks(query_key);
-}
+} */
 
 TEMPLATE_SIGNATURE
 template<typename VectorType>
