@@ -1228,7 +1228,7 @@ class MerkleTrie
 
         static_assert(!HAS_VALUE, "cannot insert without value in value mode");
 
-            invalidate_hash();
+        invalidate_hash();
         root->template insert<HAS_VALUE, InsertFn>(data);
     }
 
@@ -2637,7 +2637,7 @@ TrieNode<TEMPLATE_PARAMS>::_merge_in(trie_ptr_t&& other)
     children.emplace(other_branch_bits, std::move(other));
 
     //>= instead of > because we don't want equality here - prefix_len has been
-    //reduced to match len from it's potentially maximal length.
+    // reduced to match len from it's potentially maximal length.
     if (prefix_len.num_fully_covered_bytes() >= KEY_LEN_BYTES) {
         throw std::runtime_error("invalid prefix_len");
     }
@@ -3034,7 +3034,6 @@ TEMPLATE_SIGNATURE
 bool
 TrieNode<TEMPLATE_PARAMS>::contains_key(const prefix_t& key) const
 {
-
     [[maybe_unused]] auto lock
         = locks.template lock<std::shared_lock<std::shared_mutex>>();
 
