@@ -28,7 +28,8 @@ hash_valid flag = 1 byte, spinlock = 1byte, prefix_length = 2 bytes (could be ma
 total = 53 (although alignment concerns push the total usage to 64).
 
 An alternate approach would be to make every node log an 8-byte pointer to a normally allocated
-block of 16 nodes.  This is the approach taken by the implementation in trie/merkle_trie.h.
+block of 16 nodes.  The implementation in merkle_trie.h uses a continuously allocated block of 16 pointers (stored within the
+trie node), so each node is ultimately 3 or 4 cache lines (depending on the size of the value type).
 
 ## /utils
 
