@@ -27,8 +27,8 @@ This enables a trie node to fit into a single 64-byte cache line (as opposed to 
 hash_valid flag = 1 byte, spinlock = 1byte, prefix_length = 2 bytes (could be made 1), prefix = 8 bytes
 total = 53 (although alignment concerns push the total usage to 64).
 
-An alternate (unimplemented) approach would be to make every node log an 8-byte pointer to a normally allocated
-block of 16 nodes.  
+An alternate approach would be to make every node log an 8-byte pointer to a normally allocated
+block of 16 nodes.  This is the approach taken by the implementation in trie/merkle_trie.h.
 
 ## /utils
 
