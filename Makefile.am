@@ -39,5 +39,5 @@ bin_PROGRAMS = test
 
 test_SOURCES = test.cc $(TEST_SRCS)
 
-test_LDFLAGS = $(Catch2_LIBS)
+test_LDADD = $(LDADD) $(Catch2_LIBS)
 

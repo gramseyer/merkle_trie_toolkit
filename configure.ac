@@ -13,7 +13,7 @@ PKG_PROG_PKG_CONFIG
 
 PKG_CHECK_MODULES([libsodium], [libsodium])
 PKG_CHECK_MODULES([tbb], [tbb])
-PKG_CHECK_MODULES([Catch2], [Catch2])
+PKG_CHECK_MODULES([Catch2], [catch2])
 
 AC_CONFIG_HEADERS([config.h])
 AC_CONFIG_FILES([Makefile merkle_trie_toolkit.pc merkle_trie_toolkit-uninstalled.pc])
