@@ -19,9 +19,19 @@ namespace utils {
 //! Call get() to access id.
 class ThreadlocalIdentifier : private NonMovableOrCopyable
 {
+    static uint32_t initialize() {
+        uint32_t val = _tl_initializer.fetch_add(1, std::memory_order_relaxed);
+
+        if (val == UINT32_MAX)
+        {
+            // initializer has overflowed
+            throw std::runtime_error("overflow ThreadlocalIdentifier");
+        }
+        return val;
+    }
+
     inline static std::atomic<uint32_t> _tl_initializer = 0;
-    inline static thread_local uint32_t tid
-        = _tl_initializer.fetch_add(1, std::memory_order_relaxed);
+    inline static thread_local uint32_t tid = initialize();
 
   public:
     static uint32_t get() { return tid; }
@@ -42,7 +52,7 @@ any exported references or cause concurrent access to non-threadsafe objects.
 This would be dangerous (easy to forget this restriction). YMMV.
 */
 
-template<typename ValueType, uint8_t CACHE_SIZE = 128>
+template<typename ValueType, uint32_t CACHE_SIZE = 256>
 class ThreadlocalCache : private NonMovableOrCopyable
 {
 
@@ -61,7 +71,7 @@ class ThreadlocalCache : private NonMovableOrCopyable
     template<typename... ctor_args>
     ValueType& get(ctor_args&... args)
     {
-        auto idx = ThreadlocalIdentifier::get();
+        uint32_t idx = ThreadlocalIdentifier::get();
         if (idx >= CACHE_SIZE) {
             throw std::runtime_error("invalid tlcache access!");
         }
@@ -80,7 +90,7 @@ class ThreadlocalCache : private NonMovableOrCopyable
 
     void clear()
     {
-        for (uint8_t i = 0; i < CACHE_SIZE; i++) {
+        for (uint32_t i = 0; i < CACHE_SIZE; i++) {
             objects[i] = std::nullopt;
         }
     }
