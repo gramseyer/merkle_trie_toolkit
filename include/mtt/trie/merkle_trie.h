@@ -1486,7 +1486,7 @@ TrieNode<TEMPLATE_PARAMS>::_log(std::string padding, FILE* out) const
                      padding.c_str(),
                      (*iter).first,
                      (((*iter).second) ? "true" : "false"));
-            (*iter).second->_log(padding + " |    ");
+            (*iter).second->_log(padding + " |    ", out);
         }
     }
 }
