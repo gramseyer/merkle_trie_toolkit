@@ -13,6 +13,7 @@ Printouts include file/line information.
 #include "mtt/trie/debug_levels.h"
 
 #define TRIE_LOG(s, ...) std::printf((std::string("%-45s") + s + "\n").c_str(), (std::string(__FILE__) + "." + std::to_string(__LINE__) + ":").c_str() __VA_OPT__(,) __VA_ARGS__)
+#define TRIE_LOG_FILE(o, s, ...) std::fprintf(o, (std::string("%-45s") + s + "\n").c_str(), (std::string(__FILE__) + "." + std::to_string(__LINE__) + ":").c_str() __VA_OPT__(,) __VA_ARGS__)
 
 #if TRIE_DEBUG <= DEBUG_LEVEL_ERROR
 #define TRIE_ERROR(s, ...) TRIE_LOG(s, __VA_ARGS__)

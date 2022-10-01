@@ -628,7 +628,7 @@ class TrieNode
         TRIE_INFO_F(_log("result after merge:"));
     }
 
-    void _log(std::string padding) const;
+    void _log(std::string padding, FILE* out = stdout) const;
 
     const MetadataType metadata_query(const prefix_t query_prefix,
                                       const PrefixLenBits query_len);
@@ -929,7 +929,7 @@ class MerkleTrie
         }
         return 0;
     }
-    void _log(std::string padding)
+    void _log(std::string padding, FILE* out = stdout)
     {
         if (get_hash_valid()) {
             Hash buf;
@@ -937,9 +937,9 @@ class MerkleTrie
 
             auto str = detail::array_to_str(buf.data(), buf.size());
 
-            TRIE_LOG("%s root hash: %s", padding.c_str(), str.c_str());
+            TRIE_LOG_FILE(out, "%s root hash: %s", padding.c_str(), str.c_str());
         }
-        root->_log(padding);
+        root->_log(padding, out);
     }
 
     template<bool x = METADATA_DELETABLE>
@@ -1451,14 +1451,14 @@ class MerkleTrie
 
 TEMPLATE_SIGNATURE
 void
-TrieNode<TEMPLATE_PARAMS>::_log(std::string padding) const
+TrieNode<TEMPLATE_PARAMS>::_log(std::string padding, FILE* out) const
 {
-    TRIE_LOG("%sprefix %s (len %d bits)",
+    TRIE_LOG_FILE(out, "%sprefix %s (len %d bits)",
              padding.c_str(),
              prefix.to_string(prefix_len).c_str(),
              prefix_len.len);
     if (get_hash_valid()) {
-        TRIE_LOG("%snode hash is: %s",
+        TRIE_LOG_FILE(out, "%snode hash is: %s",
                  padding.c_str(),
                  detail::array_to_str(hash.data(), 32).c_str());
     }
@@ -1468,12 +1468,12 @@ TrieNode<TEMPLATE_PARAMS>::_log(std::string padding) const
         // value.serialize();
         value.copy_data(buf);
         auto str = detail::array_to_str(buf.data(), buf.size());
-        TRIE_LOG("%svalue serialization is %s", padding.c_str(), str.c_str());
+        TRIE_LOG_FILE(out, "%svalue serialization is %s", padding.c_str(), str.c_str());
         buf.clear();
     }
-    TRIE_LOG("%saddress: %p", padding.c_str(), this);
-    TRIE_LOG("%smetadata: %s", padding.c_str(), metadata.to_string().c_str());
-    TRIE_LOG("%snum children: %d, is_frozen: %d, bv: %x",
+    TRIE_LOG_FILE(out, "%saddress: %p", padding.c_str(), this);
+    TRIE_LOG_FILE(out, "%smetadata: %s", padding.c_str(), metadata.to_string().c_str());
+    TRIE_LOG_FILE(out, "%snum children: %d, is_frozen: %d, bv: %x",
              padding.c_str(),
              children.size(),
              0,
@@ -1482,7 +1482,7 @@ TrieNode<TEMPLATE_PARAMS>::_log(std::string padding) const
     for (unsigned int bits = 0; bits <= MAX_BRANCH_VALUE; bits++) {
         auto iter = children.find(bits);
         if (iter != children.end()) {
-            TRIE_LOG("%schild: %x, parent_status:%s",
+            TRIE_LOG_FILE(out, "%schild: %x, parent_status:%s",
                      padding.c_str(),
                      (*iter).first,
                      (((*iter).second) ? "true" : "false"));
