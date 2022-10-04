@@ -139,13 +139,13 @@ struct RecyclingAccumulateValuesRange
                                       .children_list();
             }
             if (other.work_list.size() == 1) {
-                std::printf("other.work_size = 1?!\n");
+                std::printf("other.work_list.size() = 1?!\n");
                 throw std::runtime_error(
                     "shouldn't still have other.work_list.size() == 1");
             }
 
             if (other.work_list.size() == 0) {
-                std::printf("other.work_size = 0?!\n");
+                std::printf("other.work_list.size() = 0?!\n");
                 throw std::runtime_error(
                     "shouldn't get to other.work_list.size() == 0");
             }
