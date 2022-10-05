@@ -2,8 +2,11 @@ ACLOCAL_AMFLAGS = -I m4
 
 SUBDIRS = $(PKGCONFIG_SUBDIRS) .
 
-AM_CPPFLAGS = $(libsodium_CFLAGS) $(tbb_CFLAGS)
-LDADD = $(libsodium_LIBS) $(tbb_LIBS)
+abs_top_srcdir=@r_abs_top_srcdir@
+abs_top_builddir=@r_abs_top_builddir@
+
+AM_CPPFLAGS = $(libsodium_CFLAGS) $(tbb_CFLAGS) $(utility_CFLAGS)
+LDADD = $(libsodium_LIBS) $(tbb_LIBS) $(utility_LIBS)
 
 # If we use AC_CONFIG_HEADERS([xdrpp/config.h]) in configure.ac, then
 # autoconf adds -Ixdrpp, which causes errors for files like endian.h

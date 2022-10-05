@@ -15,6 +15,25 @@ PKG_CHECK_MODULES([libsodium], [libsodium])
 PKG_CHECK_MODULES([tbb], [tbb])
 PKG_CHECK_MODULES([Catch2], [catch2])
 
+AS_IF([test -z "$ABS_TOP_BUILDDIR"],
+	[
+		ABS_TOP_BUILDDIR=$ac_pwd
+		ABS_TOP_SRCDIR=$ac_pwd
+	],
+	)
+
+AC_SUBST(r_abs_top_srcdir, $ABS_TOP_SRCDIR)
+AC_SUBST(r_abs_top_builddir, $ABS_TOP_BUILDDIR)
+
+AS_IF([test -z "$utility_INTERNAL"], 
+	[
+		AC_MSG_NOTICE("using pkg-config for utility")
+		PKG_CHECK_MODULES([utility], [utility])
+	], 
+	[
+		AC_MSG_CHECKING(using utility with lib=$utility_LIBS cflags=$utility_CFLAGS)
+	])
+
 AC_CONFIG_HEADERS([config.h])
 AC_CONFIG_FILES([Makefile merkle_trie_toolkit.pc merkle_trie_toolkit-uninstalled.pc])
 AC_OUTPUT
