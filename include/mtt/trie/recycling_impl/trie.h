@@ -331,7 +331,7 @@ class alignas(64) RecyclingTrieNode : private utils::NonMovableOrCopyable
 
     int32_t size() const;
 
-    metadata_t get_metadata() const { return metadata; }
+    const metadata_t& get_metadata() const { return metadata; }
 
     void set_metadata(metadata_t m) { metadata = m; }
 
@@ -341,13 +341,6 @@ class alignas(64) RecyclingTrieNode : private utils::NonMovableOrCopyable
     {
         return children.value(allocator);
     }
-
-    /*void set_size(int32_t sz) {
-            size_.store(sz, std::memory_order_relaxed);
-    }
-    void alter_size(int32_t delta) {
-            size_.fetch_add(delta, std::memory_order_relaxed);
-    } */
 
     const PrefixLenBits get_prefix_len() const { return prefix_len; }
 
@@ -463,7 +456,7 @@ class alignas(64) RecyclingTrieNode : private utils::NonMovableOrCopyable
         return output;
     }
 
-    template<typename VectorType>
+    template<typename VectorType, typename AccumulatorFn>
     void accumulate_values_parallel_worker(VectorType& output,
                                            size_t vector_offset,
                                            const allocator_t& allocator) const;
@@ -797,10 +790,10 @@ class RecyclingTrie
         return allocator.get_object(root).get_metadata().metadata;
     }
 
-    template<typename VectorType>
+    template<typename VectorType, typename AccumulatorFn = DefaultAccumulateValuesFn>
     VectorType accumulate_values_parallel() const;
 
-    template<typename VectorType>
+    template<typename VectorType, typename AccumulatorFn = DefaultAccumulateValuesFn>
     void accumulate_values_parallel(VectorType& vec) const;
 
     template<typename VectorType>
@@ -1501,17 +1494,17 @@ RecyclingTrie_DECL ::get_root_hash(Hash& out)
 }
 
 ATN_TEMPLATE
-template<typename VectorType>
+template<typename VectorType, typename AccumulatorFn>
 VectorType
 RecyclingTrie_DECL::accumulate_values_parallel() const
 {
     VectorType output;
-    accumulate_values_parallel(output);
+    accumulate_values_parallel<VectorType, AccumulatorFn>(output);
     return output;
 }
 
 ATN_TEMPLATE
-template<typename VectorType>
+template<typename VectorType, typename AccumulatorFn>
 void
 RecyclingTrie_DECL ::accumulate_values_parallel(VectorType& output) const
 {
@@ -1521,7 +1514,7 @@ RecyclingTrie_DECL ::accumulate_values_parallel(VectorType& output) const
     if (size_nolock() == 0)
         return;
 
-    RecyclingAccumulateValuesRange<node_t> range(root, allocator);
+    RecyclingAccumulateValuesRange<node_t, AccumulatorFn> range(root, allocator);
 
     output.resize(size_nolock());
 
@@ -1529,9 +1522,9 @@ RecyclingTrie_DECL ::accumulate_values_parallel(VectorType& output) const
         auto vector_offset = range.vector_offset;
         for (size_t i = 0; i < range.work_list.size(); i++) {
             auto& work_node = allocator.get_object(range.work_list[i]);
-            work_node.accumulate_values_parallel_worker(
+            work_node.template accumulate_values_parallel_worker<VectorType, AccumulatorFn>(
                 output, vector_offset, allocator);
-            vector_offset += work_node.size();
+            vector_offset += AccumulatorFn::size_increment(work_node.get_metadata());//work_node.size();
         }
     });
 }
@@ -1545,7 +1538,7 @@ RecyclingTrie_DECL::accumulate_keys_parallel(VectorType& output) const
     if (size_nolock() == 0)
         return;
 
-    RecyclingAccumulateValuesRange<node_t> range(root, allocator);
+    RecyclingAccumulateValuesRange<node_t, DefaultAccumulateValuesFn> range(root, allocator);
 
     output.resize(size_nolock());
 
@@ -1561,21 +1554,23 @@ RecyclingTrie_DECL::accumulate_keys_parallel(VectorType& output) const
 }
 
 ATN_TEMPLATE
-template<typename VectorType>
+template<typename VectorType, typename AccumulatorFn>
 void
 ATN_DECL::accumulate_values_parallel_worker(VectorType& output,
                                             size_t vector_offset,
                                             const allocator_t& allocator) const
 {
     if (prefix_len == MAX_KEY_LEN_BITS) {
-        output[vector_offset] = children.value(allocator);
+        AccumulatorFn::accumulate(output, vector_offset, children.value(allocator));
+        //output[vector_offset] = children.value(allocator);
         return;
     }
 
     for (auto iter = children.begin(); iter != children.end(); iter++) {
         auto& ref = allocator.get_object((*iter).second);
-        ref.accumulate_values_parallel_worker(output, vector_offset, allocator);
-        vector_offset += ref.size();
+        ref.template accumulate_values_parallel_worker<VectorType, AccumulatorFn>(output, vector_offset, allocator);
+        
+        vector_offset += AccumulatorFn::size_increment(ref.get_metadata());//ref.size();
     }
 }
 

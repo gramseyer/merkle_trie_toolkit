@@ -207,6 +207,23 @@ struct NullOpDelSideEffectFn {
 	void operator() (const Args&... args) {}
 };
 
+struct
+DefaultAccumulateValuesFn
+{
+	template<typename VectorType, typename ValueType>
+	static void
+	accumulate(VectorType& vector, size_t vector_offset, const ValueType& value)
+	{
+		vector[vector_offset] = value;
+	}
+
+	template<typename MetadataType>
+	static size_t size_increment(const MetadataType& metadata)
+	{
+		return metadata.size_;
+	}
+};
+
 /*! Template class that optionally wraps a mutex.
 When SERIAL_MODE = true, class contains a rwlock.  
 Methods that need shared locks

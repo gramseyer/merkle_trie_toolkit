@@ -84,7 +84,7 @@ class RecyclingHashRange
 };
 
 //! TBB range when accumulating a list of the values in the trie.
-template<typename TrieT, unsigned int GRAIN_SIZE = 1000>
+template<typename TrieT, typename AccumulatorFn, unsigned int GRAIN_SIZE = 1000>
 struct RecyclingAccumulateValuesRange
 {
     using ptr_t = TrieT::ptr_t;
@@ -154,7 +154,7 @@ struct RecyclingAccumulateValuesRange
 
             other.work_list.erase(other.work_list.begin());
 
-            auto sz = allocator.get_object(work_list.back()).size();
+            size_t sz = AccumulatorFn::size_increment(allocator.get_object(work_list.back()).get_metadata());//size();
             work_size += sz;
             other.work_size -= sz;
 
