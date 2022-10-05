@@ -7,7 +7,7 @@
 #include "mtt/trie/debug_macros.h"
 #include "mtt/trie/merkle_trie.h"
 
-#include "mtt/utils/serialize_endian.h"
+#include <utils/serialize_endian.h>
 
 #include "tests/offer_metadata.h"
 #include "tests/test_types.h"

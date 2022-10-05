@@ -8,7 +8,7 @@
 #include "mtt/trie/merkle_trie.h"
 #include "mtt/trie/types.h"
 
-#include "mtt/utils/serialize_endian.h"
+#include <utils/serialize_endian.h>
 
 using namespace trie;
 

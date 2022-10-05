@@ -9,8 +9,8 @@
 #include "mtt/trie/utils.h"
 #include "mtt/trie/types.h"
 
-#include "mtt/utils/serialize_endian.h"
-#include "mtt/utils/time.h"
+#include <utils/serialize_endian.h>
+#include <utils/time.h>
 
 #include <sodium.h>
 

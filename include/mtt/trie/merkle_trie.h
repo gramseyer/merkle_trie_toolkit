@@ -22,8 +22,8 @@ virtual addresses).
 
 #include "mtt/trie/debug_macros.h"
 
-#include "mtt/utils/serialize_endian.h"
-#include "mtt/utils/threadlocal_cache.h"
+#include <utils/serialize_endian.h>
+#include <utils/threadlocal_cache.h>
 
 #include <sodium.h>
 

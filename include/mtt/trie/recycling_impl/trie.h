@@ -20,9 +20,9 @@
 #include "mtt/trie/recycling_impl/metadata.h"
 #include "mtt/trie/recycling_impl/ranges.h"
 
-#include "mtt/utils/non_movable.h"
-#include "mtt/utils/serialize_endian.h"
-#include "mtt/utils/threadlocal_cache.h"
+#include <utils/non_movable.h>
+#include <utils/serialize_endian.h>
+#include <utils/threadlocal_cache.h>
 
 #include "mtt/trie/types.h"
 

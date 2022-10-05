@@ -5,7 +5,7 @@
 
 #include "mtt/trie/prefix.h"
 
-#include "mtt/utils/serialize_endian.h"
+#include <utils/serialize_endian.h>
 
 using namespace trie;
 using namespace utils;

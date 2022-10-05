@@ -3,7 +3,7 @@
 #include <cstdint>
 #include <cstdio>
 
-#include "mtt/utils/serialize_endian.h"
+#include <utils/serialize_endian.h>
 
 namespace utils
 {
