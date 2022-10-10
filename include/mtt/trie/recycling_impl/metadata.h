@@ -55,6 +55,11 @@ struct RecyclingTrieNodeMetadata
 
     template<typename ValueT>
     static RecyclingTrieNodeMetadata from_value(ValueT const& val);
+
+	std::string to_string() const
+	{
+		return std::string("size: ") + std::to_string(size_) + metadata.to_string();
+	}
 };
 
 template<typename ExtraMetadata>
@@ -88,6 +93,9 @@ struct RecyclingTrieNodeMetadata<void>
         return *this;
     }
 
+        bool operator==(const RecyclingTrieNodeMetadata& other) const = default;
+
+
     friend RecyclingTrieNodeMetadata operator-(
         RecyclingTrieNodeMetadata lhs,
         RecyclingTrieNodeMetadata const& rhs)
@@ -105,6 +113,11 @@ struct RecyclingTrieNodeMetadata<void>
 
     template<typename ValueT>
     static RecyclingTrieNodeMetadata from_value(ValueT const& val);
+
+    std::string to_string() const
+    {
+    	return std::string("size: ") + std::to_string(size_);
+    }
 };
 
 constexpr RecyclingTrieNodeMetadata<void>
