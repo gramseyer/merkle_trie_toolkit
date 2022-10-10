@@ -100,7 +100,7 @@ class RecyclingChildrenMap
             return base_ptr_offset + branch_bits;
         }
 
-        void log(std::string padding)
+        void log(std::string padding) const
         {
             TRIE_LOG("%schildren map: bv 0x%x base_ptr_offset 0x%x",
                      padding.c_str(),
@@ -187,7 +187,7 @@ class RecyclingChildrenMap
         }
     }
 
-    void log(std::string padding)
+    void log(std::string padding) const
     {
         if (tag == VALUE) {
             // do nothing for now

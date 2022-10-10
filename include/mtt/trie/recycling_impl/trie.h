@@ -398,17 +398,18 @@ class alignas(64) RecyclingTrieNode : private utils::NonMovableOrCopyable
     bool is_leaf() const { return prefix_len == MAX_KEY_LEN_BITS; }
 
     template<typename allocator_or_context_t>
-    void log(std::string padding, allocator_or_context_t& allocator)
+    void log(std::string padding, allocator_or_context_t& allocator) const
     {
-        TRIE_LOG("%sprefix %s (len %u bits)",
+        TRIE_LOG("%s prefix %s (len %u bits)",
                  padding.c_str(),
                  prefix.to_string(prefix_len).c_str(),
                  prefix_len.len);
-        TRIE_LOG("%ssz: %ld", padding.c_str(), size());
+        TRIE_LOG("%s sz: %ld", padding.c_str(), size());
         children.log(padding);
+        TRIE_LOG("%s meta: %s", padding.c_str(), get_metadata().to_string().c_str());
         // LOG("%sthis_ptr: %x", padding.c_str(), this_ptr);
         for (auto iter = children.begin(); iter != children.end(); iter++) {
-            TRIE_LOG("%schild: child_bb %x, ptr 0x%x",
+            TRIE_LOG("%s child: child_bb %x, ptr 0x%x",
                      padding.c_str(),
                      (*iter).first,
                      (*iter).second);
@@ -575,8 +576,8 @@ class alignas(64) RecyclingTrieNode : private utils::NonMovableOrCopyable
     }
 
     /* test */
-
-    metadata_t test_metadata_integrity_check(const allocator_t& allocator) const
+	template<typename allocator_or_context_t>
+    metadata_t test_metadata_integrity_check(const allocator_or_context_t& allocator) const
     {
         if (prefix_len == MAX_KEY_LEN_BITS) {
             return metadata;
@@ -588,6 +589,7 @@ class alignas(64) RecyclingTrieNode : private utils::NonMovableOrCopyable
                 .test_metadata_integrity_check(allocator);
         }
         if (meta_acc != metadata) {
+			log("integrity fail", allocator);
             throw std::runtime_error("metadata_mismatch");
         }
         return metadata;
@@ -678,6 +680,12 @@ class SerialRecyclingTrie
     AllocationContext<node_t>& get_allocation_context()
     {
         return allocation_context;
+    }
+
+    void test_metadata_integrity_check() const
+    {
+        auto const& ref = allocation_context.get_object(root);
+        ref.test_metadata_integrity_check(allocation_context);
     }
 };
 
@@ -817,7 +825,7 @@ class RecyclingTrie
         auto& serial_tries = tl_cache.get_objects();
         std::vector<ptr_t> ptrs;
         for (auto& serial : serial_tries) {
-            if (serial) {
+            if (serial) {            	
                 if (size_nolock() > 0) {
                     ptrs.push_back(serial->extract_root());
                 } else {
@@ -1236,11 +1244,13 @@ ATN_DECL::merge_in(ptr_t node, allocation_context_t& allocator)
     */
     // case 0
     if (prefix_match_len == MAX_KEY_LEN_BITS) {
-        //		std::printf("case 0\n");
-        // log("preval", allocator);
-        return MergeFn::template value_merge_recyclingimpl<metadata_t>(children.value(allocator),
+  
+        auto meta_delta = MergeFn::template value_merge_recyclingimpl<metadata_t>(children.value(allocator),
                              other.children.value(allocator));
-        //return metadata_t::zero();
+
+        alter_metadata(meta_delta);
+
+        return meta_delta;
     }
 
     // case 1
