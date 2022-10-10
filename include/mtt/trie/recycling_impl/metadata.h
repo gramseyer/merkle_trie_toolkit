@@ -20,6 +20,68 @@ namespace trie {
  * commutativity.
  */
 
+/*
+// from https://stackoverflow.com/questions/38797130/portable-way-to-check-if-expression-compiles
+template<typename T>
+struct HasVariableAccumulateSize
+{
+    template<typename U>
+    static decltype(std::declval<U>().accumulator_size, std::true_type{}) func (std::remove_reference_t<U>*);
+    template<typename U>
+    static std::false_type func(...);
+
+    using type = decltype(func<T>(nullptr));
+
+    static constexpr bool value = type::value;
+};
+
+template<typename... Extensions>
+struct CombinedExtraMetadata : public Extensions...
+{
+    bool operator==(const CombinedExtraMetadata& other) const = default;
+
+    CombinedExtraMetadata& operator+=(
+        const CombinedExtraMetadata& other)
+    {
+        (Extensions::operator+=(other)...);
+    }
+
+    friend CombinedExtraMetadata operator-(
+        CombinedExtraMetadata lhs,
+        CombinedExtraMetadata const& rhs)
+    {
+        lhs += (-rhs);
+        return lhs;
+    }
+
+    CombinedExtraMetadata operator-() const
+    {
+        return (Extensions::operator-(*this)...);
+    }
+
+    constexpr static CombineExtraMetadata zero() 
+    {
+        return CombinedExtraMetadata();
+    }
+
+    template<typename ValueType>
+    static CombinedExtraMetadata from_value(ValueType const& v)
+    {
+        return CombinedExtraMetadata(v);
+    }
+
+private:
+
+    CombinedExtraMetadata()
+        : Extensions...()
+        {}
+
+    template<typename ValueType>
+    CombinedExtraMetadata(ValueType const& v)
+        : Extensions...(v)
+        {}
+} */
+
 template<typename ExtraMetadata>
 struct RecyclingTrieNodeMetadata
 {
