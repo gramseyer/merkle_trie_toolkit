@@ -587,7 +587,7 @@ class alignas(64) RecyclingTrieNode : private utils::NonMovableOrCopyable
             allocator.get_object((*iter).second)
                 .test_metadata_integrity_check(allocator);
         }
-        if (meta_acc != metadata) {
+        if (meta_acc != metadata) { 
             throw std::runtime_error("metadata_mismatch");
         }
         return metadata;
@@ -918,6 +918,11 @@ class RecyclingTrie
     void log()
     {
         std::lock_guard lock(mtx);
+        if (root == UINT32_MAX)
+        {
+            LOG("empty trie");
+            return;
+        }
         auto& ref = allocator.get_object(root);
         ref.log("", allocator);
     }
