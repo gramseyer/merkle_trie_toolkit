@@ -52,6 +52,10 @@ struct RecyclingMetadata
 			.value_acc = val
 		};
 	}
+	std::string to_string() const
+	{
+		return std::string("value_acc: ") + std::to_string(value_acc);
+	}
 };
 
 } /* test */
