@@ -1238,9 +1238,9 @@ ATN_DECL::merge_in(ptr_t node, allocation_context_t& allocator)
     if (prefix_match_len == MAX_KEY_LEN_BITS) {
         //		std::printf("case 0\n");
         // log("preval", allocator);
-        MergeFn::value_merge(children.value(allocator),
+        return MergeFn::template value_merge_recyclingimpl<metadata_t>(children.value(allocator),
                              other.children.value(allocator));
-        return metadata_t::zero();
+        //return metadata_t::zero();
     }
 
     // case 1

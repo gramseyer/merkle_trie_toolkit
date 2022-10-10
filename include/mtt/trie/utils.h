@@ -142,6 +142,13 @@ struct OverwriteMergeFn {
 		main_value = other_value;
 	}
 
+	template<typename MetadataType, typename ValueType>
+	static
+	MetadataType value_merge_recyclingimpl(ValueType& main_value, const ValueType& other_value) {
+		main_value = other_value;
+		return MetadataType::zero();
+	}
+
 	template<typename AtomicMetadataType>
 	static typename AtomicMetadataType::BaseT 
 	metadata_merge(AtomicMetadataType& main_metadata, const AtomicMetadataType& other_metadata) {
