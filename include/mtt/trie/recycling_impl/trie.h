@@ -928,7 +928,7 @@ class RecyclingTrie
         std::lock_guard lock(mtx);
         if (root == UINT32_MAX)
         {
-            LOG("empty trie");
+            TRIE_LOG("empty trie");
             return;
         }
         auto& ref = allocator.get_object(root);
