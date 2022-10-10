@@ -1516,7 +1516,7 @@ RecyclingTrie_DECL ::accumulate_values_parallel(VectorType& output) const
 
     RecyclingAccumulateValuesRange<node_t, AccumulatorFn> range(root, allocator);
 
-    output.resize(size_nolock());
+    output.resize(AccumulatorFn::vector_size(allocator.get_object(root).get_metadata()));
 
     tbb::parallel_for(range, [&output, this](const auto& range) {
         auto vector_offset = range.vector_offset;

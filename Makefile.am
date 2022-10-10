@@ -27,6 +27,7 @@ maintainer-clean-local:
 EXTRA_DIST = .gitignore autogen.sh
 
 TEST_SRCS = \
+	tests/test_accumulate_values.cc \
 	tests/test_merkle_trie.cc \
 	tests/test_merkle_trie_metadata.cc \
 	tests/test_prefix.cc \

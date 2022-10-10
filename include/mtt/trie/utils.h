@@ -222,6 +222,12 @@ DefaultAccumulateValuesFn
 	{
 		return metadata.size_;
 	}
+
+	template<typename MetadataType>
+	static size_t vector_size(const MetadataType& root_metadata)
+	{
+		return root_metadata.size_;
+	}
 };
 
 /*! Template class that optionally wraps a mutex.
