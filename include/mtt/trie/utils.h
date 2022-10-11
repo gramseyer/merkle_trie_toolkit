@@ -83,6 +83,8 @@ struct XdrTypeWrapper : public xdr_type {
 		return *this;
 	}
 
+	bool operator==(const XdrTypeWrapper& other) const = default;
+
 	XdrTypeWrapper(const XdrTypeWrapper& other)
 	: xdr_type()
 	{
