@@ -784,6 +784,8 @@ class MerkleTrie
     using prefix_t = prefix_type;
     constexpr static PrefixLenBits MAX_KEY_LEN_BITS = TrieT::MAX_KEY_LEN_BITS;
 
+    constexpr static bool LOCKABLE = USE_LOCKS;
+
   protected:
     using hash_t = typename TrieT::hash_t;
 
