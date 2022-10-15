@@ -38,6 +38,11 @@ struct HashLog
 			logs.write_logs(filename);
 		}
 	}
+
+	void clear()
+	{
+		logs.clear();
+	}
 };
 
 
