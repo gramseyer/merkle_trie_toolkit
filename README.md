@@ -31,9 +31,10 @@ An alternate approach would be to make every node log an 8-byte pointer to a nor
 block of 16 nodes.  The implementation in merkle_trie.h uses a continuously allocated block of 16 pointers (stored within the
 trie node), so each node is ultimately 3 or 4 cache lines (depending on the size of the value type).
 
-## /utils
+# Dependencies
 
-A number of utility classes.
+Depends on gramseyer/utility.git, which could be included as a submodule or installed locally
+(It's not included as a submodule here, but that would be a small configure.ac change)
 
 # Notes to the Reader
 
