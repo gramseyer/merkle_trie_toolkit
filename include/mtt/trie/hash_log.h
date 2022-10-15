@@ -20,7 +20,7 @@ struct HashLog
 	void add_record(PrefixT const& prefix, PrefixLenBits const& prefix_len, std::vector<unsigned char> const& hash_input)
 	{
 		std::string res = std::string("prefix=") + prefix.to_string(prefix_len) + " len=" + std::to_string(prefix_len.len) + " value="
-			+ utils::array_to_str(hash_input);
+			+ utils::array_to_str(hash_input) + "\n";
 
 		logs.log(res);
 	}
@@ -28,7 +28,7 @@ struct HashLog
 	template<typename ArrayLike>
 	void add_root(ArrayLike const& hash_input)
 	{
-		std::string res = std::string("root input=") + utils::array_to_str(hash_input);
+		std::string res = std::string("root input=") + utils::array_to_str(hash_input) + "\n";
 	}
 
 	void write_logs(std::string filename)
