@@ -4,6 +4,7 @@
 #include <utils/debug_utils.h>
 
 #include "mtt/trie/prefix.h"
+#include "mtt/trie/configs.h"
 
 #include <string>
 #include <vector>
@@ -32,7 +33,10 @@ struct HashLog
 
 	void write_logs(std::string filename)
 	{
-		logs.write_logs(filename);
+		if constexpr (TRIE_LOG_HASH_RECORDS)
+		{
+			logs.write_logs(filename);
+		}
 	}
 };
 
