@@ -1645,7 +1645,7 @@ compute_hash_value_node(Hash& hash_buf,
     {
         if (log)
         {   
-            log.add_record(prefix, prefix_len, digest_bytes);
+            log->add_record(prefix, prefix_len, digest_bytes);
         }
     }
 }
@@ -1705,7 +1705,7 @@ compute_hash_branch_node(Hash& hash_buf,
     {
         if (log)
         {
-            log.add_record(prefix, prefix_len, digest_bytes);
+            log->add_record(prefix, prefix_len, digest_bytes);
         }
     }
 }
@@ -1794,7 +1794,7 @@ compute_hash_branch_node(Hash& hash_buf,
     {
         if (log)
         {
-            log.add_record(prefix, prefix_len, digest_bytes);
+            log->add_record(prefix, prefix_len, digest_bytes);
         }
     }
 }
