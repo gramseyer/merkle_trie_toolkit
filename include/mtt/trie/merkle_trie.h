@@ -781,11 +781,7 @@ class MerkleTrie
 {
     constexpr static uint8_t BRANCH_BITS = 4;
 
-    #if __cpp_lib_optional >= 202106L
-        constexpr static std::optional<HashLog<prefix_type>> null_log = std::nullopt;
-    #else
-        inline static std::optional<HashLog<prefix_type>> null_log = std::nullopt;
-    #endif
+    inline static std::optional<HashLog<prefix_type>> null_log = std::nullopt;
 
   public:
     using TrieT = TrieNode<prefix_type, ValueType, MetadataType, USE_LOCKS>;

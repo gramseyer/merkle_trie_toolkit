@@ -702,11 +702,7 @@ template<typename ValueType,
          typename ExtraMetadata = void>
 class RecyclingTrie
 {
-    #if __cpp_lib_optional >= 202106L
-        constexpr static std::optional<HashLog<PrefixT>> null_log = std::nullopt;
-    #else
-        inline static std::optional<HashLog<PrefixT>> null_log = std::nullopt;
-    #endif
+    inline static std::optional<HashLog<PrefixT>> null_log = std::nullopt;
 
   public:
     using node_t = RecyclingTrieNode<ValueType, PrefixT, ExtraMetadata>;
