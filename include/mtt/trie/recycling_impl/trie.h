@@ -14,6 +14,8 @@
 
 #include "mtt/trie/prefix.h"
 #include "mtt/trie/spinlock.h"
+#include "mtt/trie/configs.h"
+#include "mtt/trie/hash_log.h"
 
 #include "mtt/trie/recycling_impl/allocator.h"
 #include "mtt/trie/recycling_impl/children_map.h"
@@ -385,7 +387,8 @@ class alignas(64) RecyclingTrieNode : private utils::NonMovableOrCopyable
     // not threadsafe
     template<typename... ApplyToValueBeforeHashFn>
     void compute_hash(const allocator_t& allocator,
-                      std::vector<unsigned char>& digest_bytes);
+                      std::vector<unsigned char>& digest_bytes,
+                      std::optional<HashLog<prefix_t>>& log);
 
     // threadsafe
     template<typename MergeFn>
@@ -699,6 +702,11 @@ template<typename ValueType,
          typename ExtraMetadata = void>
 class RecyclingTrie
 {
+    #if __cpp_lib_optional >= 202106L
+        constexpr static std::optional<HashLog<PrefixT>> null_log = std::nullopt;
+    #else
+        inline static std::optional<HashLog<PrefixT>> null_log = std::nullopt;
+    #endif
 
   public:
     using node_t = RecyclingTrieNode<ValueType, PrefixT, ExtraMetadata>;
@@ -722,7 +730,7 @@ class RecyclingTrie
     Hash root_hash;
     std::atomic<bool> hash_valid = false;
 
-    void get_root_hash(Hash& out);
+    void get_root_hash(Hash& out, std::optional<HashLog<prefix_t>>& log);
     void validate_hash() { hash_valid.store(true, std::memory_order_relaxed); }
     void invalidate_hash()
     {
@@ -921,7 +929,7 @@ class RecyclingTrie
     }
 
     template<typename... ApplyFn>
-    void hash(Hash& hash);
+    void hash(Hash& hash, std::optional<HashLog<prefix_t>>& log = null_log);
 
     void log()
     {
@@ -1140,7 +1148,8 @@ compute_hash_branch_node_v2(Hash& hash_buf,
                             const PrefixLenBits prefix_len,
                             const Map& children,
                             const allocator_t& allocator,
-                            std::vector<unsigned char>& digest_bytes)
+                            std::vector<unsigned char>& digest_bytes,
+                            std::optional<HashLog<prefix_t>>& log)
 {
 
     // int num_header_bytes = get_header_bytes(prefix_len);
@@ -1154,7 +1163,8 @@ compute_hash_branch_node_v2(Hash& hash_buf,
         }
         allocator.get_object((*iter).second)
             .template compute_hash<ApplyToValueBeforeHashFn...>(allocator,
-                                                                digest_bytes);
+                                                                digest_bytes,
+                                                                log);
     }
     // uint8_t num_children = children.size();
 
@@ -1188,7 +1198,8 @@ ATN_TEMPLATE
 template<typename... ApplyToValueBeforeHashFn>
 void
 ATN_DECL::compute_hash(const allocator_t& allocator,
-                       std::vector<unsigned char>& digest_bytes)
+                       std::vector<unsigned char>& digest_bytes,
+                       std::optional<HashLog<prefix_t>>& log)
 {
     auto hash_is_valid = get_hash_valid();
 
@@ -1206,10 +1217,18 @@ ATN_DECL::compute_hash(const allocator_t& allocator,
                                     BRANCH_BITS,
                                     allocator_t,
                                     ApplyToValueBeforeHashFn...>(
-            hash, prefix, prefix_len, children, allocator, digest_bytes);
+            hash, prefix, prefix_len, children, allocator, digest_bytes, log);
     }
 
     validate_hash();
+
+    if (TRIE_LOG_HASH_RECORDS)
+    {
+        if (log)
+        {
+            log -> add_record(prefix, prefix_len, digest_bytes);
+        }
+    }
 }
 
 ATN_TEMPLATE
@@ -1429,7 +1448,7 @@ ATN_DECL::merge_in(ptr_t node, allocation_context_t& allocator)
 ATN_TEMPLATE
 template<typename... ApplyFn>
 void
-RecyclingTrie_DECL::hash(Hash& output_hash)
+RecyclingTrie_DECL::hash(Hash& output_hash, std::optional<HashLog<prefix_t>>& log)
 {
     std::lock_guard lock(mtx);
 
@@ -1447,12 +1466,12 @@ RecyclingTrie_DECL::hash(Hash& output_hash)
         // It seems to perform substantially faster to just allocate a vector on
         // the stack, rather than fetching a vector from a threadlocal cache.
         tbb::parallel_for(RecyclingHashRange<node_t>(root, allocator),
-                          [this](const auto& r) {
+                          [this, &log](const auto& r) {
                               std::vector<unsigned char> digest_buffer;
                               digest_buffer.reserve(default_digest_buffer_sz);
                               for (size_t i = 0; i < r.num_nodes(); i++) {
                                   r[i].template compute_hash<ApplyFn...>(
-                                      allocator, digest_buffer);
+                                      allocator, digest_buffer, log);
                               }
                           });
 
@@ -1460,9 +1479,9 @@ RecyclingTrie_DECL::hash(Hash& output_hash)
         digest_buffer.reserve(default_digest_buffer_sz);
 
         allocator.get_object(root).template compute_hash<ApplyFn...>(
-            allocator, digest_buffer);
+            allocator, digest_buffer, log);
 
-        get_root_hash(root_hash);
+        get_root_hash(root_hash, log);
     } else {
         root_hash = Hash{};
     }
@@ -1474,7 +1493,7 @@ RecyclingTrie_DECL::hash(Hash& output_hash)
 
 ATN_TEMPLATE
 void
-RecyclingTrie_DECL ::get_root_hash(Hash& out)
+RecyclingTrie_DECL ::get_root_hash(Hash& out, std::optional<HashLog<prefix_t>>& log)
 {
 
     if (root == UINT32_MAX) {
@@ -1501,6 +1520,14 @@ RecyclingTrie_DECL ::get_root_hash(Hash& out)
             root_hash.data(), root_hash.size(), buf.data(), buf.size(), NULL, 0)
         != 0) {
         throw std::runtime_error("crypto_generichash error");
+    }
+
+    if constexpr (TRIE_LOG_HASH_RECORDS)
+    {
+        if (log)
+        {
+            log -> add_root(buf);
+        }
     }
 
     validate_hash();
