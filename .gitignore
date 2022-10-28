@@ -27,5 +27,8 @@ test-driver
 test
 *.pc
 
+#lldb
+*.dSYM/*
+
 #mac
 .DS_STORE
