@@ -812,7 +812,7 @@ class MerkleTrie
 
     void validate_hash() { hash_valid.store(true, std::memory_order_release); }
 
-    bool get_hash_valid() { return hash_valid.load(std::memory_order_acquire); }
+    bool get_hash_valid() const { return hash_valid.load(std::memory_order_acquire); }
 
     void get_root_hash(Hash& out, std::optional<HashLog<prefix_t>>& log);
 
@@ -935,6 +935,12 @@ class MerkleTrie
         }
         return 0;
     }
+    
+    void _log_const(std::string padding, FILE* out = stdout) const
+    {
+        root->_log(padding, out);
+    }
+
     void _log(std::string padding, FILE* out = stdout)
     {
         if (get_hash_valid()) {
@@ -2704,7 +2710,6 @@ TrieNode<TEMPLATE_PARAMS>::get_prefix_match_len(
     const prefix_t& other,
     const PrefixLenBits other_len) const
 {
-
     return prefix.get_prefix_match_len(prefix_len, other, other_len);
 }
 
@@ -3726,6 +3731,12 @@ TrieNode<TEMPLATE_PARAMS>::get_value(const prefix_t& query_key)
 {
     [[maybe_unused]] auto lock = locks.template lock<TrieNode::shared_lock_t>();
 
+    auto prefix_match_len = get_prefix_match_len(query_key);
+    if (prefix_match_len != prefix_len)
+    {
+        return nullptr;
+    }
+
     if (prefix_len == MAX_KEY_LEN_BITS) {
         return get_value();
     }
@@ -3744,6 +3755,11 @@ TEMPLATE_SIGNATURE
 const ValueType*
 TrieNode<TEMPLATE_PARAMS>::get_value_nolocks(const prefix_t& query_key) const
 {
+    auto prefix_match_len = get_prefix_match_len(query_key);
+    if (prefix_match_len != prefix_len)
+    {
+        return nullptr;
+    }
 
     if (prefix_len == MAX_KEY_LEN_BITS) {
         return &(children.value());

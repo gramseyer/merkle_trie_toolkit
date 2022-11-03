@@ -355,3 +355,54 @@ TEST_CASE("empty hash", "[trie]")
 	REQUIRE(hash == hash2);
 }
 
+TEST_CASE("get value from nonempty", "[trie]")
+{
+	using ValueT = XdrTypeWrapper<Offer, &offer_serialize_fn>;
+	using TrieT = MerkleTrie<ByteArrayPrefix<2>, ValueT, CombinedMetadata<OrderbookMetadata>>;
+
+	ValueT offer;
+	offer.amount = 10;
+	offer.minPrice = 1;
+
+	TrieT trie;
+	TrieT::prefix_t buf;
+
+	uint16_t i = 0x00FF;
+
+	utils::write_unsigned_big_endian(buf, i);
+	trie.insert(buf, ValueT(offer));
+
+	auto query = [&] (uint16_t val) -> ValueT const*
+	{
+		utils::write_unsigned_big_endian(buf, val);
+		return trie.get_value(buf);
+	};
+
+	REQUIRE(query(0x0000) == nullptr);
+	REQUIRE(query(0xFF00) == nullptr);
+	REQUIRE(query(0xFFFF) == nullptr);
+}
+
+
+TEST_CASE("get value from empty", "[trie]")
+{
+	using ValueT = XdrTypeWrapper<Offer, &offer_serialize_fn>;
+	using TrieT = MerkleTrie<ByteArrayPrefix<2>, ValueT, CombinedMetadata<OrderbookMetadata>>;
+
+	ValueT offer;
+	offer.amount = 10;
+	offer.minPrice = 1;
+
+	TrieT trie;
+	TrieT::prefix_t buf;
+
+	auto query = [&] (uint16_t val) -> ValueT const*
+	{
+		utils::write_unsigned_big_endian(buf, val);
+		return trie.get_value(buf);
+	};
+
+	REQUIRE(query(0x0000) == nullptr);
+	REQUIRE(query(0xFF00) == nullptr);
+	REQUIRE(query(0xFFFF) == nullptr);
+}

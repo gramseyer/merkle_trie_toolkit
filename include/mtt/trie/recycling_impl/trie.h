@@ -559,10 +559,12 @@ class alignas(64) RecyclingTrieNode : private utils::NonMovableOrCopyable
     {
         auto prefix_match_len = get_prefix_match_len(query);
 
+        if (prefix_match_len != prefix_len) {
+            return nullptr;
+        }
+
         if (prefix_len == MAX_KEY_LEN_BITS) {
-            if (prefix_match_len != prefix_len) {
-                return nullptr;
-            }
+            
             return &children.value(allocator);
         }
 
