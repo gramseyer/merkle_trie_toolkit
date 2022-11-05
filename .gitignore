@@ -26,6 +26,7 @@ test_runner.cc
 test-driver
 test
 *.pc
+*.a
 
 #lldb
 *.dSYM/*

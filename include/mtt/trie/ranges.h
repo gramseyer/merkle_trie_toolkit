@@ -47,6 +47,10 @@ public:
 	HashRange(std::unique_ptr<TrieT>& node) 
 		: num_children(0)
 		, nodes() {
+			if (!node)
+			{
+				throw std::runtime_error("invalid hashrange instantiation");
+			}
 			nodes.push_back(node.get());
 			num_children = (node->size()) - (node -> num_deleted_subnodes());
 		};

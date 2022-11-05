@@ -1,6 +1,6 @@
 Name: merkle_trie_toolkit
 Description: Merkle Trie Utils
 Version: @PACKAGE_VERSION@
-Libs: 
+Libs: ${pcfiledir}/libmtttests.a
 Cflags: -I${pcfiledir}/include
 

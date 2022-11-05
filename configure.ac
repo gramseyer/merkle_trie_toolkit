@@ -15,6 +15,8 @@ PKG_CHECK_MODULES([libsodium], [libsodium])
 PKG_CHECK_MODULES([tbb], [tbb])
 PKG_CHECK_MODULES([Catch2], [catch2])
 
+AC_PROG_RANLIB
+
 AS_IF([test -z "$ABS_TOP_BUILDDIR"],
 	[
 		ABS_TOP_BUILDDIR=$ac_pwd

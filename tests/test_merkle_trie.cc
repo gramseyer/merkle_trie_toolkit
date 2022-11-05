@@ -406,3 +406,36 @@ TEST_CASE("get value from empty", "[trie]")
 	REQUIRE(query(0xFF00) == nullptr);
 	REQUIRE(query(0xFFFF) == nullptr);
 }
+
+TEST_CASE("hash empty trie", "[trie]")
+{
+	using prefix_t = trie::ByteArrayPrefix<2>;
+    using metadata_t
+        = trie::CombinedMetadata<trie::SizeMixin>;
+    using value_t = trie::PointerValue<Offer, &offer_serialize_fn>;
+
+    using trie_t = trie::MerkleTrie<prefix_t, value_t, metadata_t>;
+
+    trie_t trie;
+
+    SECTION("no elts")
+    {
+    	Hash h;
+    	trie.hash(h);
+    }
+
+    SECTION("some elts")
+    {
+    	value_t offer(std::make_unique<Offer>());
+		offer.v->amount = 10;
+		offer.v->minPrice = 1;
+
+		trie_t trie;
+		trie_t::prefix_t buf;
+
+    	trie.insert(buf, std::move(offer));
+
+    	Hash h;
+    	trie.hash(h);
+    }
+}

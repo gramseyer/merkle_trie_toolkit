@@ -8,6 +8,10 @@ abs_top_builddir=@r_abs_top_builddir@
 AM_CPPFLAGS = $(libsodium_CFLAGS) $(tbb_CFLAGS) $(utility_CFLAGS)
 LDADD = $(libsodium_LIBS) $(tbb_LIBS) $(utility_LIBS)
 
+lib_LIBRARIES = libmtttests.a
+
+
+
 # If we use AC_CONFIG_HEADERS([xdrpp/config.h]) in configure.ac, then
 # autoconf adds -Ixdrpp, which causes errors for files like endian.h
 # (system headers find the xdrpp version instead of the system
@@ -33,6 +37,8 @@ TEST_SRCS = \
 	tests/test_prefix.cc \
 	tests/test_recycling_trie.cc \
 	tests/test_serialize.cc
+
+libmtttests_a_SOURCES = $(TEST_SRCS)
 
 BUILT_SOURCES = include/mtt/trie/config.h
 

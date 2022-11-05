@@ -1856,6 +1856,10 @@ MerkleTrie<TEMPLATE_PARAMS>::get_root_hash(Hash& out, std::optional<HashLog<pref
     // caller must lock node, so no lock here
 
     uint32_t num_children = root->size() - root->num_deleted_subnodes();
+    if (root -> size() < root -> num_deleted_subnodes())
+    {
+        throw std::runtime_error("invalid num_deleted_subnodes > size");
+    }
     TRIE_INFO("hash num children: %d", num_children);
     constexpr int buf_size = 4 + 32;
     std::array<unsigned char, buf_size> buf;
@@ -1904,7 +1908,10 @@ MerkleTrie<TEMPLATE_PARAMS>::serial_hash(Hash& buffer)
         throw std::runtime_error("root should not be nullptr in hash");
     }
 
-    root->compute_hash(null_log);
+    if (root -> size() > 0)
+    {
+        root->compute_hash(null_log);
+    }
 
     get_root_hash(root_hash);
 
@@ -1925,15 +1932,21 @@ MerkleTrie<TEMPLATE_PARAMS>::hash(Hash& buffer, std::optional<HashLog<prefix_t>>
         return;
     }
 
-    tbb::parallel_for(
-        HashRange<TrieT>(root), 
-        [&log](const auto& r) {
-            for (size_t idx = 0; idx < r.num_nodes(); idx++) {
-                r[idx]->template compute_hash<ApplyFn...>(log);
-            }
-        });
+    if (!root) {
+        throw std::runtime_error("root should not be nullptr in hash");
+    }
 
-    root->template compute_hash<ApplyFn...>(log);
+    if (root -> size() > 0)
+    {
+        tbb::parallel_for(
+            HashRange<TrieT>(root), 
+            [&log](const auto& r) {
+                for (size_t idx = 0; idx < r.num_nodes(); idx++) {
+                    r[idx]->template compute_hash<ApplyFn...>(log);
+                }
+            });
+        root->template compute_hash<ApplyFn...>(log);
+    }
 
     get_root_hash(root_hash, log);
     buffer = root_hash;
