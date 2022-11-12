@@ -32,9 +32,9 @@ template<class T>
 concept Metadata_arithmetic
 	= requires(
 		T self, const T& other) {
-		std::same_as<T&, decltype(
+		requires std::same_as<T&, decltype(
 			self += other)>;
-		std::same_as<T&, decltype(
+		requires std::same_as<T&, decltype(
 			self -= other)>;
 	};
 

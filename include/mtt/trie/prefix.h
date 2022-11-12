@@ -6,6 +6,7 @@
 Two implementations of a trie prefix.  One is an arbitrary-length
 byte array, and one is specialized for accountid keys.
 */
+#include <algorithm>
 #include <atomic>
 #include <bit>
 #include <compare>
@@ -71,7 +72,7 @@ concept TriePrefix_get_prefix_match_len
 		const T& b,
 		const PrefixLenBits& c) 
 	{
-		std::same_as<PrefixLenBits, decltype(
+		requires std::same_as<PrefixLenBits, decltype(
 			self.get_prefix_match_len(a, b, c))>;
 	};
 
@@ -81,7 +82,7 @@ concept TriePrefix_get_branch_bits
 		T self,
 		const PrefixLenBits& a) {
 
-		std::same_as<uint8_t, decltype(self.get_branch_bits(a))>;
+		requires std::same_as<uint8_t, decltype(self.get_branch_bits(a))>;
 	};
 
 template<class T>
@@ -109,7 +110,7 @@ concept TriePrefix = detail::TriePrefix_get_prefix_match_len<T>
 	&& requires {
 	{ T() };
 
-	std::same_as<size_t, decltype(T::size_bytes())>;
+	requires std::same_as<size_t, decltype(T::size_bytes())>;
 };
 
 /*! Generic prefix of arbitrary length.
@@ -176,7 +177,7 @@ public:
 			}
 		}
 		uint16_t res_final = res - res % BRANCH_BITS;
-		return std::min({PrefixLenBits{res_final}, self_len, other_len});
+		return std::min( { PrefixLenBits{res_final}, self_len, other_len} );
 	}
 
 	//! get the BRANCH_BITS bits that follow a specific length point.
