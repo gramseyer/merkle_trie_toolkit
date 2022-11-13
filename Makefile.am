@@ -5,8 +5,8 @@ SUBDIRS = $(PKGCONFIG_SUBDIRS) .
 abs_top_srcdir=@r_abs_top_srcdir@
 abs_top_builddir=@r_abs_top_builddir@
 
-AM_CPPFLAGS = $(libsodium_CFLAGS) $(tbb_CFLAGS) $(utility_CFLAGS)
-LDADD = $(libsodium_LIBS) $(tbb_LIBS) $(utility_LIBS)
+AM_CPPFLAGS = $(libsodium_CFLAGS) $(tbb_CFLAGS) $(utility_CFLAGS) $(lmdb_CFLAGS)
+LDADD = $(libsodium_LIBS) $(tbb_LIBS) $(utility_LIBS) $(lmdb_LIBS)
 
 lib_LIBRARIES = libmtttests.a
 

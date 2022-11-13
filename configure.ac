@@ -15,6 +15,10 @@ PKG_CHECK_MODULES([libsodium], [libsodium])
 PKG_CHECK_MODULES([tbb], [tbb])
 PKG_CHECK_MODULES([Catch2], [catch2])
 
+#we only need lmdb dependence because I can't figure out how to ensure
+# that libutility libs get linked 
+PKG_CHECK_MODULES([lmdb], [lmdb])
+
 AC_PROG_RANLIB
 
 AS_IF([test -z "$ABS_TOP_BUILDDIR"],
