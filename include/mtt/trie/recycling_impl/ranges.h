@@ -255,10 +255,13 @@ struct RecyclingBatchMergeRange
 
     const ptr_t root;
 
+    // number of children below entry_points owned by *this
     uint64_t num_children;
 
     bool empty() const { return entry_points.size() == 0; }
 
+    // The num_children >= 100 ensures that
+    // split is never called on a totally banned base trie
     bool is_divisible() const
     {
         return (num_children >= 100) && (entry_points.size() != 0);
@@ -431,8 +434,7 @@ struct RecyclingBatchMergeRange
                                              std::move(stolen_merge_in_tries));
                         num_children += theft_candidate_ref.size();
                     } else {
-                        // std::printf("nothing stolen #sad so continuing,
-                        // losing %lu size\n", theft_candidate -> size());
+                        //std::printf("nothing stolen #sad so continuing, losing %lu size\n", theft_candidate_ref.size());
                     }
 
                     other.num_children -= theft_candidate_ref.size();

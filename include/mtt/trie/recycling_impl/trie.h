@@ -831,8 +831,9 @@ class RecyclingTrie
         auto& serial_tries = tl_cache.get_objects();
         std::vector<ptr_t> ptrs;
         for (auto& serial : serial_tries) {
-            if (serial) {            	
-                if (size_nolock() > 0) {
+            if (serial) {
+                // need some initial size to ensure range is divisible
+                if (size_nolock() >= 256) {
                     ptrs.push_back(serial->extract_root());
                 } else {
                     merge_in_nolock<MergeFn>(*serial);

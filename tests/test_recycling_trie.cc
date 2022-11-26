@@ -145,4 +145,33 @@ TEST_CASE("batch merge", "[.perf]")
 	}
 }
 
+TEST_CASE("batch merge bad initial scaffold", "[recycling_trie]")
+{
+	using trie_t = RecyclingTrie<EmptyValue>;
+	using serial_trie_t = trie_t::serial_trie_t;
+	using serial_cache_t = utils::ThreadlocalCache<serial_trie_t>;
+
+	serial_cache_t cache;
+	trie_t trie;
+
+	auto scaffold = trie.open_serial_subsidiary();
+
+	for (size_t i = 0; i < 256; i++)
+	{
+		scaffold.insert(i, {});
+	}
+
+	trie.merge_in(scaffold);
+
+	auto& merged = cache.get(trie);
+	for (size_t i = 0; i < 5000; i++)
+	{
+		merged.insert(i + 0xFFFF'FFFF'FFFF'0000, {});
+	}
+
+	trie.batch_merge_in<OverwriteMergeFn>(cache);
+
+	REQUIRE(trie.size() == 5256);
+}
+
 }; /* utils */
