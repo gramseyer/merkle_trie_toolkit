@@ -53,7 +53,7 @@ namespace trie {
 template<TriePrefix prefix_type,
          typename ValueType = EmptyValue,
          typename MetadataType = EmptyMetadata,
-         bool USE_LOCKS = true>
+         bool _USE_LOCKS = true>
 class TrieNode
 {
   public:
@@ -72,7 +72,7 @@ class TrieNode
     constexpr static uint16_t KEY_LEN_BYTES = prefix_type::size_bytes();
     constexpr static unsigned int BRANCH_BITS_EXPORT = BRANCH_BITS;
 
-    constexpr static bool LOCKABLE = USE_LOCKS;
+    constexpr static bool USE_LOCKS = _USE_LOCKS;
 
     /*Metadata locking is slightly odd.
       Adding/subtracting MetadataTypes to AtomicMetadataTypes can be
@@ -776,7 +776,7 @@ Merge, insert, delete are threadsafe with each other
 template<TriePrefix prefix_type,
          typename ValueType = EmptyValue,
          typename MetadataType = EmptyMetadata,
-         bool USE_LOCKS = true>
+         bool _USE_LOCKS = true>
 class MerkleTrie
 {
     constexpr static uint8_t BRANCH_BITS = 4;
@@ -784,11 +784,11 @@ class MerkleTrie
     inline static std::optional<HashLog<prefix_type>> null_log = std::nullopt;
 
   public:
-    using TrieT = TrieNode<prefix_type, ValueType, MetadataType, USE_LOCKS>;
+    using TrieT = TrieNode<prefix_type, ValueType, MetadataType, _USE_LOCKS>;
     using prefix_t = prefix_type;
     constexpr static PrefixLenBits MAX_KEY_LEN_BITS = TrieT::MAX_KEY_LEN_BITS;
 
-    constexpr static bool LOCKABLE = USE_LOCKS;
+    constexpr static bool USE_LOCKS = _USE_LOCKS;
 
   protected:
     using hash_t = typename TrieT::hash_t;
@@ -1456,8 +1456,8 @@ class MerkleTrie
     template<TriePrefix prefix_type,                                           \
              typename ValueType,                                               \
              typename MetadataType,                                            \
-             bool USE_LOCKS>
-#define TEMPLATE_PARAMS prefix_type, ValueType, MetadataType, USE_LOCKS
+             bool _USE_LOCKS>
+#define TEMPLATE_PARAMS prefix_type, ValueType, MetadataType, _USE_LOCKS
 
 // template instantiations:
 

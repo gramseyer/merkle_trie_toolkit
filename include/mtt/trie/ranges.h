@@ -238,7 +238,7 @@ template<typename TrieT, typename MetadataType>
 struct BatchMergeRange {
 	using map_value_t = std::vector<TrieT*>;
 
-	static_assert(TrieT::LOCKABLE, 
+	static_assert(TrieT::USE_LOCKS, 
 		"can't batch merge tries that don't have per-node locks");
 
 	//! Maps from nodes of main trie to lists of new subtries that will get
