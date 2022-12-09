@@ -864,7 +864,7 @@ class RecyclingTrie
         parallel_batch_value_modify(apply_lambda);
     }
 
-    template<typename ValueModifyFn>
+    template<typename ValueModifyFn, uint32_t GRAIN_SIZE>
     void parallel_batch_value_modify(ValueModifyFn& fn)
     {
 
@@ -874,7 +874,7 @@ class RecyclingTrie
             return;
         }
 
-        RecyclingApplyRange<node_t> range(root, allocator);
+        RecyclingApplyRange<node_t, GRAIN_SIZE> range(root, allocator);
         // guaranteed that range.work_list contains no overlaps
 
         tbb::parallel_for(range, [&fn, this](const auto& range) {
@@ -885,17 +885,16 @@ class RecyclingTrie
         });
     }
 
-    template<typename ValueModifyFn>
+    template<typename ValueModifyFn, uint32_t GRAIN_SIZE>
     void parallel_batch_value_modify(ValueModifyFn& fn) const
     {
-
         std::lock_guard lock(mtx);
         if (root == UINT32_MAX) {
             // trie is null, nothing to parallel_batch_value_modify
             return;
         }
 
-        RecyclingApplyRange<node_t> range(root, allocator);
+        RecyclingApplyRange<node_t, GRAIN_SIZE> range(root, allocator);
         // guaranteed that range.work_list contains no overlaps
 
         tbb::parallel_for(range, [&fn, this](const auto& range) {
