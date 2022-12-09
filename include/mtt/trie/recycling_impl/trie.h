@@ -821,8 +821,8 @@ class RecyclingTrie
         merge_in_nolock<MergeFn>(trie);
     }
 
-    template<typename MergeFn>
-    void batch_merge_in(utils::ThreadlocalCache<serial_trie_t>& tl_cache)
+    template<typename MergeFn, uint32_t CACHE_SIZE>
+    void batch_merge_in(utils::ThreadlocalCache<serial_trie_t, CACHE_SIZE>& tl_cache)
     {
 
         std::lock_guard lock(mtx);
@@ -846,7 +846,7 @@ class RecyclingTrie
             return;
         }
 
-        RecyclingBatchMergeRange<node_t> range(root, ptrs, allocator, tl_cache);
+        RecyclingBatchMergeRange<node_t, CACHE_SIZE> range(root, ptrs, allocator, tl_cache);
 
         RecyclingBatchMergeReduction<MergeFn> reduction{};
 

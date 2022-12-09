@@ -227,7 +227,7 @@ struct RecyclingApplyRange
 template<typename ValueType, typename PrefixT, typename ExtraMetadata>
 class SerialRecyclingTrie;
 
-template<typename TrieT>
+template<typename TrieT, uint32_t CACHE_SIZE>
 struct RecyclingBatchMergeRange
 {
     using ptr_t = TrieT::ptr_t;
@@ -236,7 +236,7 @@ struct RecyclingBatchMergeRange
     using prefix_t = TrieT::prefix_t;
     using metadata_t = TrieT::metadata_t;
     using context_cache_t
-        = utils::ThreadlocalCache<typename TrieT::main_trie_t::serial_trie_t>;
+        = utils::ThreadlocalCache<typename TrieT::main_trie_t::serial_trie_t, CACHE_SIZE>;
 
     allocator_t& allocator;
     context_cache_t& cache;
@@ -511,8 +511,8 @@ template<typename MergeFn>
 struct RecyclingBatchMergeReduction
 {
 
-    template<typename TrieT>
-    void operator()(RecyclingBatchMergeRange<TrieT> const& range)
+    template<typename TrieT, uint32_t CACHE_SIZE>
+    void operator()(RecyclingBatchMergeRange<TrieT, CACHE_SIZE> const& range)
     {
         range.template execute<MergeFn>();
     }
