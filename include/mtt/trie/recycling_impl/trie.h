@@ -807,7 +807,7 @@ class RecyclingTrie
     template<typename VectorType, typename AccumulatorFn = DefaultAccumulateValuesFn>
     VectorType accumulate_values_parallel() const;
 
-    template<typename VectorType, typename AccumulatorFn = DefaultAccumulateValuesFn>
+    template<typename VectorType, typename AccumulatorFn = DefaultAccumulateValuesFn, uint32_t GRAIN_SIZE = 1000>
     void accumulate_values_parallel(VectorType& vec) const;
 
     template<typename VectorType>
@@ -1544,7 +1544,7 @@ RecyclingTrie_DECL::accumulate_values_parallel() const
 }
 
 ATN_TEMPLATE
-template<typename VectorType, typename AccumulatorFn>
+template<typename VectorType, typename AccumulatorFn, uint32_t GRAIN_SIZE>
 void
 RecyclingTrie_DECL ::accumulate_values_parallel(VectorType& output) const
 {
@@ -1554,7 +1554,7 @@ RecyclingTrie_DECL ::accumulate_values_parallel(VectorType& output) const
     if (size_nolock() == 0)
         return;
 
-    RecyclingAccumulateValuesRange<node_t, AccumulatorFn> range(root, allocator);
+    RecyclingAccumulateValuesRange<node_t, AccumulatorFn, GRAIN_SIZE> range(root, allocator);
 
     output.resize(AccumulatorFn::vector_size(allocator.get_object(root).get_metadata()));
 
