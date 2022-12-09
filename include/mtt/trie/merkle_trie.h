@@ -1419,8 +1419,8 @@ class MerkleTrie
     template<typename MergeFn = OverwriteMergeFn>
     void batch_merge_in(std::vector<std::unique_ptr<TrieT>>&& tries);
 
-    template<typename MergeFn = OverwriteMergeFn>
-    void batch_merge_in(utils::ThreadlocalCache<MerkleTrie>& tries);
+    template<uint32_t CACHE_SIZE, typename MergeFn = OverwriteMergeFn>
+    void batch_merge_in(utils::ThreadlocalCache<MerkleTrie, CACHE_SIZE>& tries);
 
     //! Invalidates hash from root to target node.
     void invalidate_hash_to_node_nolocks(TrieT* target)
@@ -1976,10 +1976,10 @@ MerkleTrie<TEMPLATE_PARAMS>::batch_merge_in(
 }
 
 TEMPLATE_SIGNATURE
-template<typename MergeFn>
+template<uint32_t CACHE_SIZE, typename MergeFn>
 void
 MerkleTrie<TEMPLATE_PARAMS>::batch_merge_in(
-    utils::ThreadlocalCache<MerkleTrie>& tl_cache)
+    utils::ThreadlocalCache<MerkleTrie, CACHE_SIZE>& tl_cache)
 {
     std::vector<std::unique_ptr<TrieT>> tries;
 
