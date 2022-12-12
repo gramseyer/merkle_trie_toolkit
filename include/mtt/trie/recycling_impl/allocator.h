@@ -48,6 +48,11 @@ class AllocationContext : private utils::NonMovableOrCopyable
 
     using value_t = typename ObjType::value_t;
 
+    static bool overflow_check(uint32_t offset_and_index, uint8_t new_allocs)
+    {
+        return (offset_and_index & OFFSET_MASK) + new_allocs >= BUF_SIZE;
+    }
+
   public:
     AllocationContext(uint32_t cur_buffer_offset_and_index,
                       uint32_t value_buffer_offset_and_index,
@@ -59,8 +64,11 @@ class AllocationContext : private utils::NonMovableOrCopyable
 
     uint32_t allocate(uint8_t num_nodes)
     {
-        if (((cur_buffer_offset_and_index + num_nodes) & OFFSET_MASK)
-            >= BUF_SIZE) {
+        if (overflow_check(cur_buffer_offset_and_index, num_nodes))
+        {
+
+          // ((cur_buffer_offset_and_index + num_nodes) & OFFSET_MASK)
+          //  >= BUF_SIZE) {
             allocator.assign_new_buffer(*this);
         }
 
@@ -71,7 +79,9 @@ class AllocationContext : private utils::NonMovableOrCopyable
 
     uint32_t allocate_value()
     {
-        if (((value_buffer_offset_and_index + 1) & OFFSET_MASK) >= BUF_SIZE) {
+        if (overflow_check(value_buffer_offset_and_index, 1))
+        {
+        //if (((value_buffer_offset_and_index + 1) & OFFSET_MASK) >= BUF_SIZE) {
             allocator.assign_new_value_buffer(*this);
         }
         uint32_t out = value_buffer_offset_and_index;
@@ -132,8 +142,8 @@ struct RecyclingTrieNodeAllocator : private utils::NonMovableOrCopyable
     using value_buffer_t = std::array<value_t, BUF_SIZE>;
 
   private:
-    std::atomic<uint16_t> next_available_buffer = 0;
-    std::atomic<uint16_t> next_available_value_buffer = 0;
+    std::atomic<uint32_t> next_available_buffer = 0;
+    std::atomic<uint32_t> next_available_value_buffer = 0;
 
     using buffer_ptr_t = std::unique_ptr<buffer_t>;
 
@@ -149,7 +159,7 @@ struct RecyclingTrieNodeAllocator : private utils::NonMovableOrCopyable
     //! Get a new allocation context
     context_t get_new_allocator()
     {
-        uint16_t idx
+        uint32_t idx
             = next_available_buffer.fetch_add(1, std::memory_order_relaxed);
         if (idx >= buffers.size()) {
             throw std::runtime_error("used up all allocation buffers!!!");
@@ -159,7 +169,7 @@ struct RecyclingTrieNodeAllocator : private utils::NonMovableOrCopyable
             buffers[idx] = std::make_unique<buffer_t>();
         }
 
-        uint16_t value_buffer_idx = next_available_value_buffer.fetch_add(
+        uint32_t value_buffer_idx = next_available_value_buffer.fetch_add(
             1, std::memory_order_relaxed);
         if (value_buffer_idx >= value_buffers.size()) {
             throw std::runtime_error("used up all value buffers");
@@ -170,15 +180,15 @@ struct RecyclingTrieNodeAllocator : private utils::NonMovableOrCopyable
                 = std::make_unique<value_buffer_t>();
         }
 
-        return context_t(((uint32_t)idx) << OFFSET_BITS,
-                         ((uint32_t)value_buffer_idx) << OFFSET_BITS,
+        return context_t(static_cast<uint32_t>(idx) << OFFSET_BITS,
+                         static_cast<uint32_t>(value_buffer_idx) << OFFSET_BITS,
                          *this);
     }
 
     //! Give a context a new trie node buffer
     void assign_new_buffer(context_t& context)
     {
-        uint16_t idx
+        uint32_t idx
             = next_available_buffer.fetch_add(1, std::memory_order_relaxed);
         if (idx >= buffers.size()) {
             throw std::runtime_error("used up all allocation buffers!!!");
@@ -188,13 +198,13 @@ struct RecyclingTrieNodeAllocator : private utils::NonMovableOrCopyable
             buffers[idx] = std::make_unique<buffer_t>();
         }
 
-        context.set_cur_buffer_offset_and_index(((uint32_t)idx) << OFFSET_BITS);
+        context.set_cur_buffer_offset_and_index(static_cast<uint32_t>(idx) << OFFSET_BITS);
     }
 
     //! Give a context a new trie value buffer
     void assign_new_value_buffer(context_t& context)
     {
-        uint16_t value_buffer_idx = next_available_value_buffer.fetch_add(
+        uint32_t value_buffer_idx = next_available_value_buffer.fetch_add(
             1, std::memory_order_relaxed);
         if (value_buffer_idx >= value_buffers.size()) {
             throw std::runtime_error("used up all value buffers");
@@ -206,13 +216,13 @@ struct RecyclingTrieNodeAllocator : private utils::NonMovableOrCopyable
         }
 
         context.set_cur_value_buffer_offset_and_index(
-            ((uint32_t)value_buffer_idx) << OFFSET_BITS);
+            static_cast<uint32_t>(value_buffer_idx) << OFFSET_BITS);
     }
 
     //! Access a particular node, given a handle
     ObjType& get_object(uint32_t ptr) const
     {
-        uint8_t idx = ptr >> OFFSET_BITS;
+        uint32_t idx = ptr >> OFFSET_BITS;
         uint32_t offset = ptr & OFFSET_MASK;
         return (*buffers[idx])[offset];
     }
@@ -220,7 +230,7 @@ struct RecyclingTrieNodeAllocator : private utils::NonMovableOrCopyable
     //! Access a particular trie value, given a handle
     value_t& get_value(uint32_t value_ptr) const
     {
-        uint8_t idx = value_ptr >> OFFSET_BITS;
+        uint32_t idx = value_ptr >> OFFSET_BITS;
         uint32_t offset = value_ptr & OFFSET_MASK;
         return (*value_buffers[idx])[offset];
     }
