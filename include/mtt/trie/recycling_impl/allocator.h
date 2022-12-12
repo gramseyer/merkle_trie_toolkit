@@ -60,7 +60,7 @@ class AllocationContext : private utils::NonMovableOrCopyable
     uint32_t allocate(uint8_t num_nodes)
     {
         if (((cur_buffer_offset_and_index + num_nodes) & OFFSET_MASK)
-            > BUF_SIZE) {
+            >= BUF_SIZE) {
             allocator.assign_new_buffer(*this);
         }
 
@@ -71,7 +71,7 @@ class AllocationContext : private utils::NonMovableOrCopyable
 
     uint32_t allocate_value()
     {
-        if (((value_buffer_offset_and_index + 1) & OFFSET_MASK) > BUF_SIZE) {
+        if (((value_buffer_offset_and_index + 1) & OFFSET_MASK) >= BUF_SIZE) {
             allocator.assign_new_value_buffer(*this);
         }
         uint32_t out = value_buffer_offset_and_index;
