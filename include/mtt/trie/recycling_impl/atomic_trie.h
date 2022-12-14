@@ -3,6 +3,7 @@
 #include <array>
 #include <atomic>
 #include <cstdint>
+#include <cinttypes>
 
 #include "mtt/trie/prefix.h"
 #include "mtt/trie/recycling_impl/allocator.h"
@@ -23,18 +24,19 @@ class AtomicChildrenMap : private utils::NonMovableOrCopyable
     std::array<std::atomic<uint64_t>, 16> children;
 
   public:
-
-    AtomicChildrenMap()
-    {
-        clear();
-    }
+    AtomicChildrenMap() { clear(); }
 
     bool try_set(uint8_t bb, uint64_t& expected, uint64_t desired)
     {
         bool res = children[bb].compare_exchange_weak(
             expected, desired, std::memory_order_acq_rel);
 
-        std::printf("tried to swap on %p res %lu desired %llx current value %llx \n", this, res, desired, expected);
+        /*std::printf(
+            "tried to swap on %p res %lu desired %llx current value %llx \n",
+            this,
+            res,
+            desired,
+            expected); */
         return res;
     }
 
@@ -54,17 +56,17 @@ class AtomicChildrenMap : private utils::NonMovableOrCopyable
                           uint64_t single_child_ptr)
     {
         clear();
-        children[single_child_branch_bits].store(
-            single_child_ptr,
-            std::memory_order_release);
+        children[single_child_branch_bits].store(single_child_ptr,
+                                                 std::memory_order_release);
     }
-
 
     void print() const
     {
         std::printf("self: %p\n", this);
         for (uint8_t i = 0; i < 16; i++) {
-            std::printf("    %u %llx\n", i, children[i].load(std::memory_order_acquire));
+            std::printf("    %u %llx\n",
+                        i,
+                        children[i].load(std::memory_order_acquire));
         }
     }
 };
@@ -156,9 +158,8 @@ class alignas(64) AtomicTrieNode : private utils::NonMovableOrCopyable
 
         prefix.truncate(prefix_len);
 
-        std::printf("new branch node bb %lu ptr %lx\n", single_child_branch_bits, single_child_pointer);
-
-        children.set_unique_child(single_child_branch_bits, single_child_pointer);
+        children.set_unique_child(single_child_branch_bits,
+                                  single_child_pointer);
 
         hash_valid = false;
     }
@@ -166,7 +167,7 @@ class alignas(64) AtomicTrieNode : private utils::NonMovableOrCopyable
     void set_as_empty_node()
     {
         prefix.clear();
-        prefix_len = PrefixLenBits{0};
+        prefix_len = PrefixLenBits{ 0 };
 
         children.clear();
 
@@ -196,150 +197,33 @@ class alignas(64) AtomicTrieNode : private utils::NonMovableOrCopyable
 
     void print_self(std::string padding) const
     {
-        std::printf("%s prefix=%s len=%u\n", padding.c_str(), prefix.to_string(prefix_len).c_str(),
-                 prefix_len.len);
+        std::printf("%s prefix=%s len=%u\n",
+                    padding.c_str(),
+                    prefix.to_string(prefix_len).c_str(),
+                    prefix_len.len);
         children.print();
     }
 
     template<typename InsertFn, typename InsertedValue>
     bool __attribute__((warn_unused_result))
     insert(prefix_t const& new_prefix,
-                InsertedValue&& value,
-                allocation_context_t& allocator)
-    {
-        print_self("insert");
-        auto prefix_match_len = get_prefix_match_len(new_prefix);
-        // correctness assertion
-        if (prefix_match_len < prefix_len) {
-            throw std::runtime_error("invalid insertion");
-        }
+           InsertedValue&& value,
+           allocation_context_t& allocator);
 
-        if (prefix_len == MAX_KEY_LEN_BITS) {
-            InsertFn::value_insert(allocator.get_value(value_pointer),
-                                   std::move(value));
-            return false;
-        }
-
-        const uint8_t bb = new_prefix.get_branch_bits(prefix_len);
-
-        auto get_ptr = [](uint64_t ptr_and_size) -> uint32_t {
-            return ptr_and_size >> 32;
-        };
-        auto get_sz = [](uint64_t ptr_and_size) -> uint32_t {
-            return ptr_and_size & 0xFFFF'FFFF;
-        };
-
-        uint64_t relevant_child = children.get(bb);
-
-        uint32_t new_ptr = UINT32_MAX;
-
-        while (true) {
-
-            uint32_t ptr = get_ptr(relevant_child);
-            if (ptr == UINT32_MAX) {
-                if (new_ptr == UINT32_MAX) {
-                    new_ptr = allocator.allocate(1);
-                }
-
-                auto& new_child = allocator.get_object(new_ptr);
-
-                new_child.template set_as_new_value_leaf<InsertFn, InsertedValue>(
-                    new_prefix, std::move(value), allocator);
-
-                uint64_t swap = (static_cast<uint64_t>(new_ptr) << 32);
-
-                std::printf("new node create %llx\n", swap);
-
-                if (children.try_set(bb, relevant_child, swap)) {
-                    // nothing to do
-                    return true;
-                }
-            } else {
-                // check if should recurse
-                auto& child = allocator.get_object(ptr);
-                if (child.insert_can_recurse(new_prefix)) {
-
-                    return child.template insert<InsertFn>(new_prefix, std::move(value), allocator);
-
-                    /*std::printf("bump size and recurse\n");
-                    if (children.try_set(
-                            bb, relevant_child, relevant_child + 1)) {
-                        retuchild.template insert<InsertFn>(new_prefix, std::move(value), allocator);
-                        return;
-                    } */
-                } else {
-                    if (new_ptr == UINT32_MAX) {
-                        new_ptr = allocator.allocate(1);
-                    }
-
-                    PrefixLenBits join_len
-                        = child.get_prefix_match_len(new_prefix);
-
-                    auto& new_node = allocator.get_object(new_ptr);
-
-                    new_node.set_as_new_branch_node(
-                        new_prefix,
-                        join_len,
-                        relevant_child,
-                        child.get_branch_bits(join_len),
-                        allocator);
-
-                    uint64_t swap = (static_cast<uint64_t>(new_ptr) << 32)
-                                    + get_sz(relevant_child);
-
-                    std::printf("allocate intermediate node: relevant_child (new_node) %llx swap %llx\n", relevant_child, swap);
-
-                    if (children.try_set(bb, relevant_child, swap)) {
-                        return new_node.template insert<InsertFn>(
-                            new_prefix, std::move(value), allocator);
-                    }
-                }
-            }
-            __builtin_ia32_pause();
-        }
-    }
-
-    void bump_size(prefix_t const& bump_prefix, allocation_context_t& allocator)
-    {
-        if (prefix_len == MAX_KEY_LEN_BITS)
-        {
-            return;
-        }
-
-        const uint8_t bb = bump_prefix.get_branch_bits(prefix_len);
-
-        uint64_t relevant_child = children.get(bb);
-
-        while(true)
-        {
-            if (children.try_set(bb, relevant_child, relevant_child + 1))
-            {
-                auto& child = allocator.get_object(relevant_child >> 32);
-
-                child.bump_size(bump_prefix, allocator);
-                return;
-            }
-            __builtin_ia32_pause();
-        }
-    }
+    void bump_size(prefix_t const& bump_prefix, allocation_context_t& allocator);
 
     // TESTING
 
     uint32_t deep_sizecheck(allocator_t const& allocator) const
     {
-        print_self("sizecheck");
-        if (prefix_len == MAX_KEY_LEN_BITS)
-        {
+        if (prefix_len == MAX_KEY_LEN_BITS) {
             return 1;
         }
 
         uint32_t total_size = 0;
 
-        for (uint8_t bb = 0; bb < 16; bb++)
-        {
+        for (uint8_t bb = 0; bb < 16; bb++) {
             uint64_t res = children.get(bb);
-
-            std::printf("query for %llx\n", res);
 
             uint32_t expected_sz = res & 0xFFFF'FFFF;
 
@@ -352,9 +236,8 @@ class alignas(64) AtomicTrieNode : private utils::NonMovableOrCopyable
             auto const& child = allocator.get_object(ptr);
 
             uint32_t got_sz = child.deep_sizecheck(allocator);
-            if (got_sz != expected_sz)
-            {
-                std::printf("expected %lu, got %lu\n", expected_sz, got_sz);
+            if (got_sz != expected_sz) {
+                std::printf("expected %" PRIu32 ", got %" PRIu32 "\n", expected_sz, got_sz);
                 throw std::runtime_error("size mismatch");
             }
 
@@ -367,7 +250,7 @@ class alignas(64) AtomicTrieNode : private utils::NonMovableOrCopyable
 template<typename ValueType, typename PrefixT>
 class AtomicTrie
 {
-public:
+  public:
     using prefix_t = PrefixT;
     using node_t = AtomicTrieNode<ValueType, prefix_t>;
     using allocation_context_t = AllocationContext<node_t>;
@@ -375,13 +258,12 @@ public:
     using value_t = ValueType;
     using main_trie_t = AtomicTrie<ValueType, PrefixT>;
 
-private:
+  private:
     allocator_t allocator;
 
     node_t root;
 
-public:
-
+  public:
     allocation_context_t get_new_allocation_context()
     {
         return allocator.get_new_allocator();
@@ -390,17 +272,18 @@ public:
     AtomicTrie()
         : allocator()
         , root()
-        {
-            root.set_as_empty_node();
-        }
-
-    template<typename InsertFn = OverwriteInsertFn<ValueType>, typename InsertedValueType = ValueType>
-    void insert(prefix_t const& new_prefix,
-            InsertedValueType&& value,
-            allocation_context_t& allocator)
     {
-        if (root.template insert<InsertFn, InsertedValueType>(new_prefix, std::move(value), allocator))
-        {
+        root.set_as_empty_node();
+    }
+
+    template<typename InsertFn = OverwriteInsertFn<ValueType>,
+             typename InsertedValueType = ValueType>
+    void insert(prefix_t const& new_prefix,
+                InsertedValueType&& value,
+                allocation_context_t& allocator)
+    {
+        if (root.template insert<InsertFn, InsertedValueType>(
+                new_prefix, std::move(value), allocator)) {
             root.bump_size(new_prefix, allocator);
         }
     }
@@ -413,10 +296,123 @@ public:
 
     // TESTING
 
-    uint32_t deep_sizecheck() const
-    {
-        return root.deep_sizecheck(allocator);
-    }
+    uint32_t deep_sizecheck() const { return root.deep_sizecheck(allocator); }
 };
+
+#define ATN_TEMPLATE template<typename ValueType, typename PrefixT>
+#define ATN_DECL AtomicTrieNode<ValueType, PrefixT>
+
+ATN_TEMPLATE
+template<typename InsertFn, typename InsertedValue>
+bool __attribute__((warn_unused_result))
+ATN_DECL :: insert(prefix_t const& new_prefix,
+                  InsertedValue&& value,
+                  allocation_context_t& allocator)
+{
+    auto prefix_match_len = get_prefix_match_len(new_prefix);
+    // correctness assertion
+    if (prefix_match_len < prefix_len) {
+        throw std::runtime_error("invalid insertion");
+    }
+
+    if (prefix_len == MAX_KEY_LEN_BITS) {
+        InsertFn::value_insert(allocator.get_value(value_pointer),
+                               std::move(value));
+        return false;
+    }
+
+    const uint8_t bb = new_prefix.get_branch_bits(prefix_len);
+
+    auto get_ptr
+        = [](uint64_t ptr_and_size) -> uint32_t { return ptr_and_size >> 32; };
+    auto get_sz = [](uint64_t ptr_and_size) -> uint32_t {
+        return ptr_and_size & 0xFFFF'FFFF;
+    };
+
+    uint64_t relevant_child = children.get(bb);
+
+    uint32_t new_ptr = UINT32_MAX;
+
+    while (true) {
+
+        uint32_t ptr = get_ptr(relevant_child);
+        if (ptr == UINT32_MAX) {
+            if (new_ptr == UINT32_MAX) {
+                new_ptr = allocator.allocate(1);
+            }
+
+            auto& new_child = allocator.get_object(new_ptr);
+
+            new_child.template set_as_new_value_leaf<InsertFn, InsertedValue>(
+                new_prefix, std::move(value), allocator);
+
+            uint64_t swap = (static_cast<uint64_t>(new_ptr) << 32);
+
+            if (children.try_set(bb, relevant_child, swap)) {
+                // nothing to do
+                return true;
+            }
+        } else {
+            // check if should recurse
+            auto& child = allocator.get_object(ptr);
+            if (child.insert_can_recurse(new_prefix)) {
+
+                return child.template insert<InsertFn>(
+                    new_prefix, std::move(value), allocator);
+
+            } else {
+                if (new_ptr == UINT32_MAX) {
+                    new_ptr = allocator.allocate(1);
+                }
+
+                PrefixLenBits join_len = child.get_prefix_match_len(new_prefix);
+
+                auto& new_node = allocator.get_object(new_ptr);
+
+                new_node.set_as_new_branch_node(new_prefix,
+                                                join_len,
+                                                relevant_child,
+                                                child.get_branch_bits(join_len),
+                                                allocator);
+
+                uint64_t swap = (static_cast<uint64_t>(new_ptr) << 32)
+                                + get_sz(relevant_child);
+
+                if (children.try_set(bb, relevant_child, swap)) {
+                    return new_node.template insert<InsertFn>(
+                        new_prefix, std::move(value), allocator);
+                }
+            }
+        }
+        __builtin_ia32_pause();
+    }
+}
+
+ATN_TEMPLATE
+void
+ATN_DECL :: bump_size(prefix_t const& bump_prefix,
+                     allocation_context_t& allocator)
+{
+    if (prefix_len == MAX_KEY_LEN_BITS) {
+        return;
+    }
+
+    const uint8_t bb = bump_prefix.get_branch_bits(prefix_len);
+
+    uint64_t relevant_child = children.get(bb);
+
+    while (true) {
+        if (children.try_set(bb, relevant_child, relevant_child + 1)) {
+            auto& child = allocator.get_object(relevant_child >> 32);
+
+            child.bump_size(bump_prefix, allocator);
+            return;
+        }
+        __builtin_ia32_pause();
+    }
+}
+
+#undef ATN_DECL
+#undef ATN_TEMPLATE
 
 } // namespace trie
