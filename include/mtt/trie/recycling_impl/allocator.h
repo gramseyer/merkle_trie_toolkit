@@ -66,9 +66,6 @@ class AllocationContext : private utils::NonMovableOrCopyable
     {
         if (overflow_check(cur_buffer_offset_and_index, num_nodes))
         {
-
-          // ((cur_buffer_offset_and_index + num_nodes) & OFFSET_MASK)
-          //  >= BUF_SIZE) {
             allocator.assign_new_buffer(*this);
         }
 

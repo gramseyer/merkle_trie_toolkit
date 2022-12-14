@@ -155,7 +155,7 @@ struct RecyclingTrieNodeMetadata<void>
         return *this;
     }
 
-        bool operator==(const RecyclingTrieNodeMetadata& other) const = default;
+    bool operator==(const RecyclingTrieNodeMetadata& other) const = default;
 
 
     friend RecyclingTrieNodeMetadata operator-(
@@ -190,7 +190,7 @@ RecyclingTrieNodeMetadata<void>::zero()
 
 template<typename ValueT>
 RecyclingTrieNodeMetadata<void>
-RecyclingTrieNodeMetadata<void>::from_value(ValueT const& [[maybe_unused]] val)
+RecyclingTrieNodeMetadata<void>::from_value(ValueT const&)
 {
     return RecyclingTrieNodeMetadata<void>{ .size_ = 1 };
 }
