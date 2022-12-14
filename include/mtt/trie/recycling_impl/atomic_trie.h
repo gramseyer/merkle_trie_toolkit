@@ -202,7 +202,8 @@ class alignas(64) AtomicTrieNode : private utils::NonMovableOrCopyable
     }
 
     template<typename InsertFn, typename InsertedValue>
-    void insert(prefix_t const& new_prefix,
+    bool __attribute__((warn_unused_result))
+    insert(prefix_t const& new_prefix,
                 InsertedValue&& value,
                 allocation_context_t& allocator)
     {
@@ -216,7 +217,7 @@ class alignas(64) AtomicTrieNode : private utils::NonMovableOrCopyable
         if (prefix_len == MAX_KEY_LEN_BITS) {
             InsertFn::value_insert(allocator.get_value(value_pointer),
                                    std::move(value));
-            return;
+            return false;
         }
 
         const uint8_t bb = new_prefix.get_branch_bits(prefix_len);
@@ -245,25 +246,27 @@ class alignas(64) AtomicTrieNode : private utils::NonMovableOrCopyable
                 new_child.template set_as_new_value_leaf<InsertFn, InsertedValue>(
                     new_prefix, std::move(value), allocator);
 
-                uint64_t swap = (static_cast<uint64_t>(new_ptr) << 32) + 1;
+                uint64_t swap = (static_cast<uint64_t>(new_ptr) << 32);
 
                 std::printf("new node create %llx\n", swap);
 
                 if (children.try_set(bb, relevant_child, swap)) {
                     // nothing to do
-                    return;
+                    return true;
                 }
             } else {
                 // check if should recurse
                 auto& child = allocator.get_object(ptr);
                 if (child.insert_can_recurse(new_prefix)) {
 
-                    std::printf("bump size and recurse\n");
+                    return child.template insert<InsertFn>(new_prefix, std::move(value), allocator);
+
+                    /*std::printf("bump size and recurse\n");
                     if (children.try_set(
                             bb, relevant_child, relevant_child + 1)) {
-                        child.template insert<InsertFn>(new_prefix, std::move(value), allocator);
+                        retuchild.template insert<InsertFn>(new_prefix, std::move(value), allocator);
                         return;
-                    }
+                    } */
                 } else {
                     if (new_ptr == UINT32_MAX) {
                         new_ptr = allocator.allocate(1);
@@ -282,16 +285,39 @@ class alignas(64) AtomicTrieNode : private utils::NonMovableOrCopyable
                         allocator);
 
                     uint64_t swap = (static_cast<uint64_t>(new_ptr) << 32)
-                                    + get_sz(relevant_child) + 1;
+                                    + get_sz(relevant_child);
 
                     std::printf("allocate intermediate node: relevant_child (new_node) %llx swap %llx\n", relevant_child, swap);
 
                     if (children.try_set(bb, relevant_child, swap)) {
-                        new_node.template insert<InsertFn>(
+                        return new_node.template insert<InsertFn>(
                             new_prefix, std::move(value), allocator);
-                        return;
                     }
                 }
+            }
+            __builtin_ia32_pause();
+        }
+    }
+
+    void bump_size(prefix_t const& bump_prefix, allocation_context_t& allocator)
+    {
+        if (prefix_len == MAX_KEY_LEN_BITS)
+        {
+            return;
+        }
+
+        const uint8_t bb = bump_prefix.get_branch_bits(prefix_len);
+
+        uint64_t relevant_child = children.get(bb);
+
+        while(true)
+        {
+            if (children.try_set(bb, relevant_child, relevant_child + 1))
+            {
+                auto& child = allocator.get_object(relevant_child >> 32);
+
+                child.bump_size(bump_prefix, allocator);
+                return;
             }
             __builtin_ia32_pause();
         }
@@ -373,7 +399,10 @@ public:
             InsertedValueType&& value,
             allocation_context_t& allocator)
     {
-        root.template insert<InsertFn, InsertedValueType>(new_prefix, std::move(value), allocator);
+        if (root.template insert<InsertFn, InsertedValueType>(new_prefix, std::move(value), allocator))
+        {
+            root.bump_size(new_prefix, allocator);
+        }
     }
 
     void clear()

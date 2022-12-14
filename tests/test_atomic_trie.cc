@@ -37,6 +37,15 @@ TEST_CASE("atomic trie emptyvalue small", "[atomic]")
 	}
 
 	REQUIRE(trie.deep_sizecheck() == 1000);
+
+	for (uint64_t i = 0; i < 1000; i++)
+	{
+		uint64_t query = (i * 17) % 6701;  //6701 is prime
+
+		trie.insert(UInt64Prefix(query), EmptyValue{}, alloc);
+	}
+
+	REQUIRE(trie.deep_sizecheck() == 1000);
 }
 
 } // namespace trie
