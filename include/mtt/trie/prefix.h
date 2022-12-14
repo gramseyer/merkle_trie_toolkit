@@ -477,6 +477,10 @@ public:
 		return prefix;
 	}
 
+	void clear() {
+		prefix = 0;
+	}
+
 	std::string to_string(const PrefixLenBits& len) const {
 		auto bytes = get_bytes(len);
 		return detail::array_to_str(bytes.data(), len.num_prefix_bytes());
