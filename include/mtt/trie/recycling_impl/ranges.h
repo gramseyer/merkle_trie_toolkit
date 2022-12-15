@@ -174,10 +174,9 @@ struct RecyclingAccumulateValuesRange
 template<typename TrieT, unsigned int GRAIN_SIZE = 1000>
 struct RecyclingApplyRange
 {
-    using ptr_t = TrieT::ptr_t;
     using allocator_t = TrieT::allocator_t;
 
-    std::vector<ptr_t> work_list;
+    std::vector<const TrieT*> work_list;
 
     uint64_t work_size;
 
@@ -187,12 +186,12 @@ struct RecyclingApplyRange
 
     bool is_divisible() const { return work_size > GRAIN_SIZE; }
 
-    RecyclingApplyRange(ptr_t work_root, const allocator_t& allocator)
+    RecyclingApplyRange(const TrieT* work_root, const allocator_t& allocator)
         : work_list()
         , work_size(0)
         , allocator(allocator)
     {
-        work_size = allocator.get_object(work_root).size();
+        work_size = work_root -> size(); //allocator.get_object(work_root).size();
         work_list.push_back(work_root);
     }
 
@@ -213,16 +212,23 @@ struct RecyclingApplyRange
             }
             if (other.work_list.size() == 1) {
 
-                if (other.work_list.at(0) == UINT32_MAX) {
+                if (other.work_list.at(0) == nullptr) {
                     throw std::runtime_error("found nullptr in ApplyRange!");
                 }
-                other.work_list = allocator.get_object(other.work_list.at(0))
-                                      .children_list_nolock();
+                auto list = other.work_list.at(0) -> children_list_nolock();
+                other.work_list.clear();
+                for (auto ptr : list)
+                {
+                    other.work_list.push_back(&allocator.get_object(ptr));
+                }
+
+                //other.work_list = allocator.get_object(other.work_list.at(0))
+                //                      .children_list_nolock();
             } else {
                 work_list.push_back(other.work_list.at(0));
                 other.work_list.erase(other.work_list.begin());
 
-                auto sz = allocator.get_object(work_list.back()).size();
+                auto sz = work_list.back() -> size(); //allocator.get_object(work_list.back()).size();
                 work_size += sz;
                 other.work_size -= sz;
             }

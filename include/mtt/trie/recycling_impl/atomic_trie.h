@@ -220,6 +220,12 @@ class alignas(64) AtomicTrieNode : private utils::NonMovableOrCopyable
     void bump_size(prefix_t const& bump_prefix, allocation_context_t& allocator);
 
     std::vector<uint32_t> children_list() const;
+    //legacy compat
+    std::vector<uint32_t> children_list_nolock() const
+    {
+        return children_list();
+    }
+
 
     uint32_t size() const;
 
@@ -228,6 +234,32 @@ class alignas(64) AtomicTrieNode : private utils::NonMovableOrCopyable
 
     Hash get_hash() const {
         return hash;
+    }
+
+    const prefix_t& get_prefix() const {
+        return prefix;
+    }
+
+    const PrefixLenBits& get_prefix_len() const { return prefix_len; }
+
+    template<typename ApplyFn>
+    void apply_to_kvs(ApplyFn& fn, const allocator_t& allocator) const
+    {
+        if (prefix_len == MAX_KEY_LEN_BITS)
+        {
+            fn(prefix, allocator.get_value(value_pointer));
+            return;
+        }
+
+        for (uint8_t bb = 0; bb < 16; bb++)
+        {
+            uint32_t ptr = children.get(bb) >> 32;
+            if (ptr != UINT32_MAX)
+            {
+                auto const& child = allocator.get_object(ptr);
+                child.apply_to_kvs(fn, allocator);
+            }
+        }
     }
 
     // TESTING
@@ -335,6 +367,21 @@ class AtomicTrie
           });
 
         return hash_serial();
+    }
+
+    template<typename ValueModifyFn, uint32_t GRAIN_SIZE>
+    void parallel_batch_value_modify(ValueModifyFn& fn) const
+    {
+        RecyclingApplyRange<node_t, GRAIN_SIZE> range(&root, allocator);
+        // guaranteed that range.work_list contains no overlaps
+
+        tbb::parallel_for(range, [&fn, this](const auto& range) {
+            for (size_t i = 0; i < range.work_list.size(); i++) {
+
+                ConstApplyableSubnodeRef ref{ range.work_list[i], allocator };
+                fn(ref);
+            }
+        });
     }
 
     void clear()

@@ -61,76 +61,6 @@ struct PtrWrapper
     constexpr static PtrWrapper make_nullptr() { return PtrWrapper{ NULLPTR }; }
 };
 
-template<typename ValueType>
-struct ApplyableSubnodeRef
-{
-    uint32_t ptr;
-    RecyclingTrieNodeAllocator<ValueType>& allocator;
-
-    template<typename ApplyFn>
-    void apply(ApplyFn& fn, auto&&... args)
-    {
-        allocator.get_object(ptr).apply(fn, allocator, args...);
-    }
-
-    template<typename ApplyFn>
-    void apply_to_keys(ApplyFn& fn)
-    {
-        allocator.get_object(ptr).apply_to_keys(fn, allocator);
-    }
-
-    template<typename ApplyFn>
-    void apply_to_kvs(ApplyFn& fn) const
-    {
-        allocator.get_object(ptr).apply_to_kvs(fn, allocator);
-    }
-
-    template<typename ApplyFn>
-    void apply_to_kvs(ApplyFn& fn)
-    {
-        allocator.get_object(ptr).apply_to_kvs(fn, allocator);
-    }
-
-    auto get_prefix() const { return allocator.get_object(ptr).get_prefix(); }
-
-    PrefixLenBits get_prefix_len() const
-    {
-        return allocator.get_object(ptr).get_prefix_len();
-    }
-};
-
-template<typename ValueType>
-struct ConstApplyableSubnodeRef
-{
-    uint32_t ptr;
-    const RecyclingTrieNodeAllocator<ValueType>& allocator;
-
-    template<typename ApplyFn>
-    void apply(ApplyFn& fn, auto&&... args) const
-    {
-        allocator.get_object(ptr).apply(fn, allocator, args...);
-    }
-
-    template<typename ApplyFn>
-    void apply_to_keys(ApplyFn& fn) const
-    {
-        allocator.get_object(ptr).apply_to_keys(fn, allocator);
-    }
-
-    template<typename ApplyFn>
-    void apply_to_kvs(ApplyFn& fn) const
-    {
-        allocator.get_object(ptr).apply_to_kvs(fn, allocator);
-    }
-
-    auto get_prefix() const { return allocator.get_object(ptr).get_prefix(); }
-
-    PrefixLenBits get_prefix_len() const
-    {
-        return allocator.get_object(ptr).get_prefix_len();
-    }
-};
-
 template<typename ValueType, typename PrefixT, typename ExtraMetadata>
 class RecyclingTrie;
 
@@ -547,6 +477,7 @@ class alignas(64) RecyclingTrieNode : private utils::NonMovableOrCopyable
     {
         if (prefix_len == MAX_KEY_LEN_BITS) {
             fn(prefix, children.value(allocator));
+            return;
         }
         for (auto iter = children.begin(); iter != children.end(); iter++) {
             auto& child = allocator.get_object((*iter).second);

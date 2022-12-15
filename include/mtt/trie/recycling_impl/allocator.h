@@ -240,4 +240,74 @@ struct RecyclingTrieNodeAllocator : private utils::NonMovableOrCopyable
     }
 };
 
+template<typename ValueType>
+struct ApplyableSubnodeRef
+{
+    ValueType* ptr;
+    RecyclingTrieNodeAllocator<ValueType>& allocator;
+
+    template<typename ApplyFn>
+    void apply(ApplyFn& fn, auto&&... args)
+    {
+        ptr->apply(fn, allocator, args...);
+    }
+
+    template<typename ApplyFn>
+    void apply_to_keys(ApplyFn& fn)
+    {
+        ptr->apply_to_keys(fn, allocator);
+    }
+
+    template<typename ApplyFn>
+    void apply_to_kvs(ApplyFn& fn) const
+    {
+        ptr->apply_to_kvs(fn, allocator);
+    }
+
+    template<typename ApplyFn>
+    void apply_to_kvs(ApplyFn& fn)
+    {
+        ptr->apply_to_kvs(fn, allocator);
+    }
+
+    auto get_prefix() const { return ptr->get_prefix(); }
+
+    PrefixLenBits get_prefix_len() const
+    {
+        return ptr->get_prefix_len();
+    }
+};
+
+template<typename ValueType>
+struct ConstApplyableSubnodeRef
+{
+    const ValueType* ptr;
+    const RecyclingTrieNodeAllocator<ValueType>& allocator;
+
+    template<typename ApplyFn>
+    void apply(ApplyFn& fn, auto&&... args) const
+    {
+        ptr->apply(fn, allocator, args...);
+    }
+
+    template<typename ApplyFn>
+    void apply_to_keys(ApplyFn& fn) const
+    {
+       ptr->apply_to_keys(fn, allocator);
+    }
+
+    template<typename ApplyFn>
+    void apply_to_kvs(ApplyFn& fn) const
+    {
+       ptr->apply_to_kvs(fn, allocator);
+    }
+
+    auto get_prefix() const { return ptr->get_prefix(); }
+
+    PrefixLenBits get_prefix_len() const
+    {
+        return ptr->get_prefix_len();
+    }
+};
+
 } // namespace trie
