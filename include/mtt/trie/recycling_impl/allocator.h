@@ -10,8 +10,10 @@ struct RecyclingTrieAllocatorConstants
 {
     constexpr static size_t BUF_SIZE = 500'000;
 
-    constexpr static uint8_t BUFFER_ID_BITS = 8;
-    constexpr static uint8_t OFFSET_BITS = 24;
+    constexpr static uint8_t BUFFER_ID_BITS = 12;
+    constexpr static uint8_t OFFSET_BITS = 20;
+
+    constexpr static uint32_t NUM_BUFFERS = static_cast<uint32_t>(1) << BUFFER_ID_BITS;
 
     constexpr static uint32_t OFFSET_MASK
         = (((uint32_t)1) << (OFFSET_BITS)) - 1;
@@ -144,11 +146,11 @@ struct RecyclingTrieNodeAllocator : private utils::NonMovableOrCopyable
 
     using buffer_ptr_t = std::unique_ptr<buffer_t>;
 
-    std::array<buffer_ptr_t, 256> buffers;
+    std::array<buffer_ptr_t,RecyclingTrieAllocatorConstants::NUM_BUFFERS> buffers;
 
     using value_buffer_ptr_t = std::unique_ptr<value_buffer_t>;
 
-    std::array<value_buffer_ptr_t, 256> value_buffers;
+    std::array<value_buffer_ptr_t, RecyclingTrieAllocatorConstants::NUM_BUFFERS> value_buffers;
 
     using context_t = AllocationContext<ObjType>;
 
