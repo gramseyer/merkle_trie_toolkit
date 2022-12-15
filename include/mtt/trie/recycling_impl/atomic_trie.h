@@ -5,12 +5,19 @@
 #include <cstdint>
 #include <cinttypes>
 
+#include "mtt/trie/bitvector.h"
+#include "mtt/trie/debug_macros.h"
 #include "mtt/trie/prefix.h"
 #include "mtt/trie/recycling_impl/allocator.h"
+#include "mtt/trie/recycling_impl/ranges.h"
 #include "mtt/trie/types.h"
 #include "mtt/trie/utils.h"
 
 #include <utils/non_movable.h>
+
+#include <sodium.h>
+
+#include <tbb/parallel_for.h>
 
 namespace trie {
 
@@ -84,7 +91,7 @@ class alignas(64) AtomicTrieNode : private utils::NonMovableOrCopyable
     using allocation_context_t = AllocationContext<node_t>;
     using allocator_t = RecyclingTrieNodeAllocator<node_t>;
     using value_t = ValueType;
-    using main_trie_t = AtomicTrie<ValueType, PrefixT>;
+    using ptr_t = uint32_t;
 
   private:
     constexpr static uint8_t KEY_LEN_BYTES = PrefixT::size_bytes();
@@ -212,7 +219,16 @@ class alignas(64) AtomicTrieNode : private utils::NonMovableOrCopyable
 
     void bump_size(prefix_t const& bump_prefix, allocation_context_t& allocator);
 
-    uint32_t get_size() const;
+    std::vector<uint32_t> children_list() const;
+
+    uint32_t size() const;
+
+    void append_hash_to_vec(std::vector<uint8_t>& digest_buffer) const;
+    void compute_hash(allocator_t& allocator, std::vector<uint8_t>& digest_buffer);
+
+    Hash get_hash() const {
+        return hash;
+    }
 
     // TESTING
 
@@ -258,12 +274,13 @@ class AtomicTrie
     using allocation_context_t = AllocationContext<node_t>;
     using allocator_t = RecyclingTrieNodeAllocator<node_t>;
     using value_t = ValueType;
-    using main_trie_t = AtomicTrie<ValueType, PrefixT>;
 
   private:
     allocator_t allocator;
 
     node_t root;
+
+    bool hashed = false;
 
   public:
     allocation_context_t get_new_allocation_context()
@@ -282,23 +299,54 @@ class AtomicTrie
              typename InsertedValueType = ValueType>
     void insert(prefix_t const& new_prefix,
                 InsertedValueType&& value,
-                allocation_context_t& allocator)
+                allocation_context_t& allocator_context)
     {
-        if (root.template insert<InsertFn, InsertedValueType>(
-                new_prefix, std::move(value), allocator)) {
-            root.bump_size(new_prefix, allocator);
+        if (hashed)
+        {
+            throw std::runtime_error("cannot insert after hashing");
         }
+
+        if (root.template insert<InsertFn, InsertedValueType>(
+                new_prefix, std::move(value), allocator_context)) {
+            root.bump_size(new_prefix, allocator_context);
+        }
+    }
+
+    Hash hash_serial() {
+        std::vector<uint8_t> digest_bytes;
+        root.compute_hash(allocator, digest_bytes);
+        // no need for double hash root -- 
+        // hash of root already records that prefix len is 0, ensures
+        // we can't embed this hash into another fake trie to 
+        // fake a proof
+        hashed = true;
+        return root.get_hash();
+    }
+
+    Hash hash()
+    {
+        tbb::parallel_for(RecyclingHashRange<node_t>(&root, allocator),
+          [this](const auto& r) {
+              std::vector<uint8_t> digest_buffer;
+              for (size_t i = 0; i < r.num_nodes(); i++) {
+                  r[i].compute_hash(
+                      allocator, digest_buffer);
+              }
+          });
+
+        return hash_serial();
     }
 
     void clear()
     {
+        hashed = false;
         root.set_as_empty_node();
         allocator.reset();
     }
 
     uint32_t size()
     {
-        return root.get_size();
+        return root.size();
     }
 
     // TESTING
@@ -450,8 +498,25 @@ ATN_DECL :: bump_size(prefix_t const& bump_prefix,
 }
 
 ATN_TEMPLATE
+std::vector<uint32_t> 
+ATN_DECL :: children_list() const
+{
+    std::vector<uint32_t> out;
+    for (uint8_t i = 0; i < 16; i++)
+    {
+        uint32_t ptr = (children.get(i) >> 32);
+        if (ptr != UINT32_MAX)
+        {
+            out.push_back(ptr);
+        }
+
+    }
+    return out;
+}
+
+ATN_TEMPLATE
 uint32_t
-ATN_DECL :: get_size() const
+ATN_DECL :: size() const
 {
     uint32_t acc = 0;
     for (uint8_t bb = 0; bb < 16; bb++)
@@ -459,6 +524,79 @@ ATN_DECL :: get_size() const
         acc += (children.get(bb) & 0xFFFF'FFFF);
     }
     return acc;
+}
+
+ATN_TEMPLATE 
+void
+ATN_DECL :: append_hash_to_vec(std::vector<uint8_t>& digest_buffer) const
+{
+    digest_buffer.insert(
+        digest_buffer.end(),
+        hash.begin(),
+        hash.end());
+}
+
+ATN_TEMPLATE
+void
+ATN_DECL :: compute_hash(allocator_t& allocator, std::vector<uint8_t>& digest_buffer)
+{
+    if (hash_valid)
+    {
+        return;
+    }
+
+    if (prefix_len == MAX_KEY_LEN_BITS)
+    {
+
+        digest_buffer.clear();
+        write_node_header(digest_buffer, prefix, prefix_len);
+        
+        auto const& value = allocator.get_value(value_pointer);
+        value.copy_data(digest_buffer);
+    }
+    else
+    {
+        TrieBitVector bv;
+
+        for (uint8_t bb = 0; bb < 16; bb++)
+        {
+            uint64_t res = children.get(bb);
+
+            if ((res >> 32) != UINT32_MAX)
+            {
+                allocator.get_object(res >> 32).compute_hash(allocator, digest_buffer);
+                bv.add(bb);
+            }
+        }
+
+        digest_buffer.clear();
+        write_node_header(digest_buffer, prefix, prefix_len);
+        bv.write(digest_buffer);
+
+        for (uint8_t bb = 0; bb < 16; bb++)
+        {
+            uint64_t res = children.get(bb);
+
+            if ((res >> 32) != UINT32_MAX)
+            {
+                allocator.get_object(res >> 32).append_hash_to_vec(digest_buffer);
+            }
+        }
+    }
+
+    //print_self("hash time");
+    //std::printf("input data %s\n", detail::array_to_str(digest_buffer).c_str());
+
+    if (crypto_generichash(hash.data(),
+                           hash.size(),
+                           digest_buffer.data(),
+                           digest_buffer.size(),
+                           NULL,
+                           0)
+        != 0) {
+        throw std::runtime_error("error from crypto_generichash");
+    }
+    hash_valid = true;
 }
 
 #undef ATN_DECL

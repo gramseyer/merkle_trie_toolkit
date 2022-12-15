@@ -1463,7 +1463,7 @@ RecyclingTrie_DECL::hash(Hash& output_hash, std::optional<HashLog<prefix_t>>& lo
 
         // It seems to perform substantially faster to just allocate a vector on
         // the stack, rather than fetching a vector from a threadlocal cache.
-        tbb::parallel_for(RecyclingHashRange<node_t>(root, allocator),
+        tbb::parallel_for(RecyclingHashRange<node_t>(&allocator.get_object(root), allocator),
                           [this, &log](const auto& r) {
                               std::vector<unsigned char> digest_buffer;
                               digest_buffer.reserve(default_digest_buffer_sz);

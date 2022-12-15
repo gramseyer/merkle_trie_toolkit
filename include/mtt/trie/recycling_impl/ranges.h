@@ -23,13 +23,13 @@ class RecyclingHashRange
 
     uint32_t num_children;
     using allocator_t = RecyclingTrieNodeAllocator<TrieT>;
-    using ptr_t = TrieT::ptr_t;
+    //using ptr_t = TrieT::ptr_t;
 
     allocator_t& allocator;
 
   public:
     //! Nodes for which this range is responsible for hashing.
-    std::vector<ptr_t> nodes;
+    std::vector<TrieT*> nodes;
 
     //! TBB: is this range worth executing
     bool empty() const { return num_children == 0; }
@@ -43,18 +43,18 @@ class RecyclingHashRange
     //! Get an actual reference on a node to be hashed.
     TrieT& operator[](size_t idx) const
     {
-        return allocator.get_object(nodes[idx]);
+        return *nodes[idx];//allocator.get_object(nodes[idx]);
     }
 
     //! Construct a default range (for the whole trie)
     //! from the trie root.
-    RecyclingHashRange(ptr_t node, allocator_t& allocator)
+    RecyclingHashRange(TrieT* root, allocator_t& allocator)
         : num_children(0)
         , allocator(allocator)
         , nodes()
     {
-        nodes.push_back(node);
-        num_children = (allocator.get_object(node).size());
+        nodes.push_back(root);
+        num_children = root -> size();
     };
 
     //! TBB: splitting constructor.
@@ -66,8 +66,14 @@ class RecyclingHashRange
         auto original_sz = other.num_children;
         while (num_children < original_sz / 2) {
             if (other.nodes.size() == 1) {
-                other.nodes
-                    = allocator.get_object(other.nodes[0]).children_list();
+                auto ptrs = other.nodes[0] -> children_list();
+                other.nodes.clear();
+                for (auto ptr : ptrs)
+                {
+                    other.nodes.push_back(&allocator.get_object(ptr));
+                }
+               // other.nodes
+                //    = allocator.get_object(other.nodes[0]).children_list();
             }
             if (other.nodes.size() == 0) {
                 std::printf("other.nodes.size() = 0!");
@@ -76,7 +82,7 @@ class RecyclingHashRange
 
             nodes.push_back(other.nodes[0]);
             other.nodes.erase(other.nodes.begin());
-            auto sz = allocator.get_object(nodes.back()).size();
+            auto sz = nodes.back() -> size(); //allocator.get_object(nodes.back()).size();
             num_children += sz;
             other.num_children -= sz;
         }
