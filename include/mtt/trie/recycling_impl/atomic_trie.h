@@ -565,6 +565,10 @@ ATN_TEMPLATE
 uint32_t
 ATN_DECL :: size() const
 {
+    if (prefix_len == MAX_KEY_LEN_BITS)
+    {
+        return 1;
+    }
     uint32_t acc = 0;
     for (uint8_t bb = 0; bb < 16; bb++)
     {
