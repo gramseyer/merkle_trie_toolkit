@@ -422,7 +422,7 @@ class TrieNode
     //! Implicitly computes hashes for any children with invalid cached
     //! hashes.  Operates serially.
     template<typename... ApplyToValueBeforeHashFn>
-    void compute_hash(std::optional<HashLog<prefix_t>>& log);
+    void compute_hash(std::vector<uint8_t>& digest_bytes, std::optional<HashLog<prefix_t>>& log);
 
     //! Get the value associated with a given key
     //! returns nullptr if not present
@@ -445,13 +445,14 @@ class TrieNode
         buffer = hash;
     }
 
+
     void copy_hash_to_buf(unsigned char* buffer)
     {
 
         [[maybe_unused]] auto lock = locks.template lock<shared_lock_t>();
         static_assert(sizeof(hash) == 32, "hash size nonsense");
         memcpy(buffer, hash.data(), 32);
-    }
+    } 
 
     template<bool x = HAS_SIZE>
     typename std::enable_if<x, uint32_t>::type size() const
@@ -1625,14 +1626,15 @@ namespace detail {
 
 template<typename ValueType, typename prefix_t>
 static void
-compute_hash_value_node(Hash& hash_buf,
+compute_hash_value_node(std::vector<uint8_t>& digest_bytes,
+                        Hash& hash_buf,
                         const prefix_t& prefix,
                         const PrefixLenBits prefix_len,
                         ValueType& value,
                         std::optional<HashLog<prefix_t>>& log)
 {
-
-    std::vector<unsigned char> digest_bytes;
+    digest_bytes.clear();
+    //std::vector<unsigned char> digest_bytes;
 
     write_node_header(digest_bytes, prefix, prefix_len);
 
@@ -1662,7 +1664,8 @@ template<typename Map,
          typename prefix_t,
          typename... ApplyToValueBeforeHashFn>
 static typename std::enable_if<!IGNORE_DELETED_SUBNODES, void>::type
-compute_hash_branch_node(Hash& hash_buf,
+compute_hash_branch_node(std::vector<uint8_t>& digest_bytes,
+                         Hash& hash_buf,
                          const prefix_t& prefix,
                          const PrefixLenBits prefix_len,
                          const Map& children,
@@ -1675,11 +1678,12 @@ compute_hash_branch_node(Hash& hash_buf,
         if (!(*iter).second) {
             throw std::runtime_error("can't recurse hash down null ptr");
         }
-        (*iter).second->template compute_hash<ApplyToValueBeforeHashFn...>(log);
+        (*iter).second->template compute_hash<ApplyToValueBeforeHashFn...>(digest_bytes, log);
     }
     uint8_t num_children = children.size();
 
-    std::vector<unsigned char> digest_bytes;
+    digest_bytes.clear();
+    //std::vector<unsigned char> digest_bytes;
 
     write_node_header(digest_bytes, prefix, prefix_len);
 
@@ -1722,7 +1726,8 @@ template<typename Map,
          typename prefix_t,
          typename... ApplyToValueBeforeHashFn>
 static typename std::enable_if<IGNORE_DELETED_SUBNODES, void>::type
-compute_hash_branch_node(Hash& hash_buf,
+compute_hash_branch_node(std::vector<uint8_t>& digest_bytes,
+                         Hash& hash_buf,
                          const prefix_t& prefix,
                          const PrefixLenBits prefix_len,
                          const Map& children,
@@ -1742,7 +1747,7 @@ compute_hash_branch_node(Hash& hash_buf,
                 throw std::runtime_error("can't recurse hash down null ptr");
             }
             (*iter)
-                .second->template compute_hash<ApplyToValueBeforeHashFn...>(log);
+                .second->template compute_hash<ApplyToValueBeforeHashFn...>(digest_bytes, log);
         }
         if (child_meta.size < child_meta.num_deleted_subnodes) {
             std::printf("child_meta size: %" PRId64
@@ -1769,7 +1774,8 @@ compute_hash_branch_node(Hash& hash_buf,
         return;
     }
 
-    std::vector<unsigned char> digest_bytes;
+    digest_bytes.clear();
+    //std::vector<unsigned char> digest_bytes;
 
     write_node_header(digest_bytes, prefix, prefix_len);
 
@@ -1814,7 +1820,7 @@ Applies ApplyToValueBeofreHashFn... to each value before hashing.
 TEMPLATE_SIGNATURE
 template<typename... ApplyToValueBeforeHashFn>
 void
-TrieNode<TEMPLATE_PARAMS>::compute_hash(std::optional<HashLog<prefix_t>>& log)
+TrieNode<TEMPLATE_PARAMS>::compute_hash(std::vector<uint8_t>& digest_bytes, std::optional<HashLog<prefix_t>>& log)
 {
 
     TRIE_INFO("starting compute_hash on prefix %s (len %d bits)",
@@ -1831,14 +1837,14 @@ TrieNode<TEMPLATE_PARAMS>::compute_hash(std::optional<HashLog<prefix_t>>& log)
         auto& value = children.value();
 
         (ApplyToValueBeforeHashFn::apply_to_value(value), ...);
-        detail::compute_hash_value_node(hash, prefix, prefix_len, value, log);
+        detail::compute_hash_value_node(digest_bytes, hash, prefix, prefix_len, value, log);
     } else {
         detail::compute_hash_branch_node<children_map_t,
                                          bv_t,
                                          METADATA_DELETABLE,
                                          prefix_t,
                                          ApplyToValueBeforeHashFn...>(
-            hash, prefix, prefix_len, children, log);
+            digest_bytes, hash, prefix, prefix_len, children, log);
     }
 
     validate_hash();
@@ -1908,9 +1914,11 @@ MerkleTrie<TEMPLATE_PARAMS>::serial_hash(Hash& buffer)
         throw std::runtime_error("root should not be nullptr in hash");
     }
 
+    std::vector<uint8_t> digest_bytes;
+
     if (root -> size() > 0)
     {
-        root->compute_hash(null_log);
+        root->compute_hash(digest_bytes, null_log);
     }
 
     get_root_hash(root_hash);
@@ -1941,11 +1949,13 @@ MerkleTrie<TEMPLATE_PARAMS>::hash(Hash& buffer, std::optional<HashLog<prefix_t>>
         tbb::parallel_for(
             HashRange<TrieT>(root), 
             [&log](const auto& r) {
+                std::vector<uint8_t> digest_bytes;
                 for (size_t idx = 0; idx < r.num_nodes(); idx++) {
-                    r[idx]->template compute_hash<ApplyFn...>(log);
+                    r[idx]->template compute_hash<ApplyFn...>(digest_bytes, log);
                 }
             });
-        root->template compute_hash<ApplyFn...>(log);
+        std::vector<uint8_t> digest_bytes;
+        root->template compute_hash<ApplyFn...>(digest_bytes, log);
     }
 
     get_root_hash(root_hash, log);
