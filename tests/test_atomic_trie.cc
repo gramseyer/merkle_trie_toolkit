@@ -59,7 +59,7 @@ TEST_CASE("parallel atomic trie insert", "[atomic]")
 	AtomicTrie<EmptyValue, UInt64Prefix> trie;
 
 	tbb::parallel_for(
-		tbb::blocked_range<uint64_t>(0, 100000),
+		tbb::blocked_range<uint64_t>(0, 1000000),
 		[&] (auto r) {
 			auto& serial = cache.get(trie);
 
@@ -67,10 +67,14 @@ TEST_CASE("parallel atomic trie insert", "[atomic]")
 			{
 				serial.insert(UInt64Prefix(i), EmptyValue{});
 			}
+			for (auto i = r.begin(); i < r.end(); i++)
+			{
+				serial.insert(UInt64Prefix(i), EmptyValue{});
+			}
 
 		});
 
-	REQUIRE(trie.deep_sizecheck() == 100000);
+	REQUIRE(trie.deep_sizecheck() == 1000000);
 }
 
 } // namespace trie
