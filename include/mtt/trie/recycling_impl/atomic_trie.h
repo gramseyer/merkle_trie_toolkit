@@ -329,6 +329,11 @@ public:
     {
         main_trie.template insert<InsertFn, InsertedValueType>(new_prefix, std::move(value), alloc);
     }
+
+    void insert(prefix_t const& new_prefix)
+    {
+        main_trie.template insert<OverwriteInsertFn<EmptyValue>, EmptyValue>(new_prefix, EmptyValue{}, alloc);
+    }
 };
 
 #define ATN_TEMPLATE template<typename ValueType, typename PrefixT>
