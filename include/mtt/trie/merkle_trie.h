@@ -1827,12 +1827,23 @@ TrieNode<TEMPLATE_PARAMS>::compute_hash(std::vector<uint8_t>& digest_bytes, std:
               prefix.to_string(prefix_len).c_str(),
               prefix_len.len);
 
+   /* std::printf("compute hash called on %p prefix %s len %d\n",
+		    this,
+		    prefix.to_string(prefix_len).c_str(),
+		    prefix_len.len);
+    */
     auto hash_buffer_is_valid = get_hash_valid();
 
     if (hash_buffer_is_valid)
         return;
 
-    if (children.empty()) {
+    if (prefix_len.len == 0 && children.empty())
+    {
+	    // root
+	    return;
+    }
+
+    if (prefix_len == MAX_KEY_LEN_BITS) {
 
         auto& value = children.value();
 
