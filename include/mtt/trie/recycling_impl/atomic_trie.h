@@ -212,6 +212,8 @@ class alignas(64) AtomicTrieNode : private utils::NonMovableOrCopyable
 
     void bump_size(prefix_t const& bump_prefix, allocation_context_t& allocator);
 
+    uint32_t get_size() const;
+
     // TESTING
 
     uint32_t deep_sizecheck(allocator_t const& allocator) const
@@ -294,9 +296,39 @@ class AtomicTrie
         allocator.reset();
     }
 
+    uint32_t size()
+    {
+        return root.get_size();
+    }
+
     // TESTING
 
     uint32_t deep_sizecheck() const { return root.deep_sizecheck(allocator); }
+};
+
+template<typename ValueType, typename prefix_t>
+class AtomicTrieReference : public utils::NonMovableOrCopyable
+{
+    using node_t = AtomicTrieNode<ValueType, prefix_t>;
+    using allocation_context_t = AllocationContext<node_t>;
+
+    AtomicTrie<ValueType, prefix_t>& main_trie;
+    allocation_context_t alloc;
+
+public:
+
+    AtomicTrieReference(AtomicTrie<ValueType, prefix_t>& main_trie)
+        : main_trie(main_trie)
+        , alloc(main_trie.get_new_allocation_context())
+        {}
+
+    template<typename InsertFn = OverwriteInsertFn<ValueType>,
+             typename InsertedValueType = ValueType>
+    void insert(prefix_t const& new_prefix,
+                InsertedValueType&& value)
+    {
+        main_trie.template insert<InsertFn, InsertedValueType>(new_prefix, std::move(value), alloc);
+    }
 };
 
 #define ATN_TEMPLATE template<typename ValueType, typename PrefixT>
@@ -410,6 +442,18 @@ ATN_DECL :: bump_size(prefix_t const& bump_prefix,
         }
         __builtin_ia32_pause();
     }
+}
+
+ATN_TEMPLATE
+uint32_t
+ATN_DECL :: get_size() const
+{
+    uint32_t acc = 0;
+    for (uint8_t bb = 0; bb < 16; bb++)
+    {
+        acc += (children.get(bb) & 0xFFFF'FFFF);
+    }
+    return acc;
 }
 
 #undef ATN_DECL
