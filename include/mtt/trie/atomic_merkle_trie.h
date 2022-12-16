@@ -51,6 +51,7 @@ public:
 				auto& ptrs = l -> nodes;
 				for (auto* ptr : ptrs)
 				{
+					std::printf("deleting %p\n", ptr);
 					delete ptr;
 				}
 			}
@@ -105,7 +106,9 @@ public:
 		, children_owned(false)
 		, size(0)
 		, hash()
-		{}
+		{
+			std::printf("alloc %p\n", this);
+		}
 
 	// map node
 	AtomicMerkleTrieNode(prefix_t const& prefix, PrefixLenBits len)
@@ -121,6 +124,7 @@ public:
 			{
 				throw std::runtime_error("wrong ctor used");
 			}
+			std::printf("alloc %p\n", this);
 		}
 
 	void set_unique_child(uint8_t bb, node_t* ptr)
@@ -138,7 +142,9 @@ public:
 		, children_owned(true)
 		, size(0)
 		, hash()
-	{}
+	{
+		std::printf("alloc %p\n", this);
+	}
 
 	template<typename InsertFn, typename InsertedValueType>
 	static value_t 
@@ -173,6 +179,7 @@ public:
 
 	~AtomicMerkleTrieNode()
 	{
+		std::printf("~AtomicMerkleTrieNode() %p\n", this);
 		if (is_leaf())
 		{
 			value.~value_t();
@@ -186,6 +193,7 @@ public:
 					node_t* ptr = children[bb].load(std::memory_order_relaxed);
 					if (ptr != nullptr)
 					{
+						std::printf("recursive delete %p\n", ptr);
 						delete ptr;
 					}
 				}
@@ -204,7 +212,7 @@ public:
            InsertedValue&& value,
            gc_t& gc);
 
-    int32_t __attribute__((warn_unused_result))
+    int32_t
     compute_hash_and_normalize(gc_t& gc);
 
     uint8_t get_num_children() const;
@@ -263,6 +271,13 @@ public:
     		hash.begin(),
     		hash.end());
     }
+
+    Hash get_hash() const
+    {
+    	trie_assert(hash_valid.load(std::memory_order_acquire), "invalid hash appended");
+
+    	return hash;
+    }
 };
 
 
@@ -285,6 +300,11 @@ public:
 		return out;
 	}
 
+	gc_t& get_gc()
+	{
+		return gc;
+	}
+
 	AtomicMerkleTrie()
 		: root(new node_t())
 		, gc()
@@ -303,6 +323,12 @@ public:
 		root = nullptr;
 		gc.gc();
 	}
+
+	Hash hash_and_normalize()
+	{
+		root -> compute_hash_and_normalize(gc);
+		return root -> get_hash();
+	}
 };
 
 #define AMTN_TEMPLATE template<typename prefix_t, typename value_t, uint32_t TLCACHE_SIZE>
@@ -317,6 +343,7 @@ AMTN_DECL::insert(
 	gc_t& gc)
 {
 	invalidate_hash();
+	std::printf("insert %s on %p\n", new_prefix.to_string(MAX_KEY_LEN_BITS).c_str(), this);
 
 	auto prefix_match_len = get_prefix_match_len(new_prefix);
 	trie_assert(prefix_match_len >= prefix_len, "invalid insertion");
@@ -347,7 +374,9 @@ AMTN_DECL::insert(
 		} 
 		else
 		{
-			node_t* new_node = new node_t(new_prefix, prefix_match_len);
+			PrefixLenBits join_len = child->get_prefix_match_len(new_prefix);
+
+			node_t* new_node = new node_t(new_prefix, join_len);
 			new_node -> set_unique_child(bb, child);
 
 			if (try_add_child(bb, child, new_node))
@@ -478,7 +507,7 @@ AMTN_DECL :: get_or_make_subnode_ref(const prefix_t& query_prefix, const PrefixL
 
 
 AMTN_TEMPLATE
-int32_t __attribute__((warn_unused_result))
+int32_t
 AMTN_DECL :: compute_hash_and_normalize(gc_t& gc)
 {
 	if (hash_valid)
@@ -531,7 +560,7 @@ AMTN_DECL :: compute_hash_and_normalize(gc_t& gc)
 
 			gc.free(child);
 
-			trie_assert(try_set_child(bb, child, new_child), "concurrency fail");
+			trie_assert(try_add_child(bb, child, new_child), "concurrency fail");
 
 			bv.add(bb);
 			num_children++;
