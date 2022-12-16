@@ -107,6 +107,58 @@ TEST_CASE("force recompute", "[amt]")
 	REQUIRE(h2 == m.hash_and_normalize());
 }
 
+TEST_CASE("deletions", "[amt]")
+{
+	using mt = AtomicMerkleTrie<UInt64Prefix, EmptyValue, 256>;
+
+	mt m;
+
+	auto h = m.hash_and_normalize();
+
+	auto* root = m.get_subnode_ref_and_invalidate_hash(UInt64Prefix(0), PrefixLenBits(32));
+
+	SECTION("single elt")
+	{
+
+		root -> template insert<OverwriteInsertFn<EmptyValue>>(UInt64Prefix(0x0000'0000'0000'0000), EmptyValue{}, m.get_gc());
+
+		root -> delete_value(UInt64Prefix(0x0000'0000'0000'0000), m.get_gc());
+
+		REQUIRE(m.hash_and_normalize() == h);
+	}
+
+	SECTION("several elt")
+	{
+		root -> template insert<OverwriteInsertFn<EmptyValue>>(UInt64Prefix(0x0000'0000'0000'0000), EmptyValue{}, m.get_gc());
+		root -> template insert<OverwriteInsertFn<EmptyValue>>(UInt64Prefix(0x0000'0000'0000'1111), EmptyValue{}, m.get_gc());
+
+		h = m.hash_and_normalize();
+		root = m.get_subnode_ref_and_invalidate_hash(UInt64Prefix(0), PrefixLenBits(32));
+
+		root -> template insert<OverwriteInsertFn<EmptyValue>>(UInt64Prefix(0x0000'0000'0000'2222), EmptyValue{}, m.get_gc());
+
+		root -> delete_value(UInt64Prefix(0x0000'0000'0000'2222), m.get_gc());
+
+		REQUIRE(m.hash_and_normalize() == h);
+	}
+
+	SECTION("cleanup chain")
+	{
+		m.get_subnode_ref_and_invalidate_hash(UInt64Prefix(0), PrefixLenBits(32));
+		m.get_subnode_ref_and_invalidate_hash(UInt64Prefix(0), PrefixLenBits(40));
+		m.get_subnode_ref_and_invalidate_hash(UInt64Prefix(0), PrefixLenBits(44));
+		m.get_subnode_ref_and_invalidate_hash(UInt64Prefix(0), PrefixLenBits(48));
+
+		root -> template insert<OverwriteInsertFn<EmptyValue>>(UInt64Prefix(0x0000'0000'0000'2222), EmptyValue{}, m.get_gc());
+		root -> template insert<OverwriteInsertFn<EmptyValue>>(UInt64Prefix(0x0000'0000'0000'1111), EmptyValue{}, m.get_gc());
+
+		root -> delete_value(UInt64Prefix(0x0000'0000'0000'2222), m.get_gc());
+		root -> delete_value(UInt64Prefix(0x0000'0000'0000'1111), m.get_gc());
+
+		REQUIRE(m.hash_and_normalize() == h);
+	}
+}
+
 
 
 

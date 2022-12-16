@@ -279,6 +279,8 @@ public:
 
     	return hash;
     }
+
+    void delete_value(const prefix_t& delete_prefix, gc_t& gc);
 };
 
 
@@ -612,6 +614,31 @@ AMTN_DECL :: compute_hash_and_normalize(gc_t& gc)
 
 	return sz_delta;
 }
+
+AMTN_TEMPLATE
+void
+AMTN_DECL :: delete_value(const prefix_t& delete_prefix, gc_t& gc)
+{
+	trie_assert(!is_leaf(), "cannot delete from leaf");
+
+	auto bb = delete_prefix.get_branch_bits(prefix_len);
+
+	auto* ptr = get_child(bb);
+	trie_assert(ptr != nullptr, "must exist");
+
+	if (ptr -> is_leaf()
+		&& ptr -> get_prefix() == delete_prefix)
+	{
+		auto* prev = children[bb].exchange(nullptr, std::memory_order_acq_rel);
+		if (prev) {
+			gc.free(prev);
+		}
+		return;
+	}
+
+	ptr -> delete_value(delete_prefix, gc);
+}
+
 
 #undef AMTN_DECL
 #undef AMTN_TEMPLATE
