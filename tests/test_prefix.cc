@@ -10,6 +10,16 @@
 using namespace trie;
 using namespace utils;
 
+TEST_CASE("uint64 prefix to string", "[prefix]")
+{
+	UInt64Prefix prefix{0x1111'2222'3333'4444};
+
+	REQUIRE(prefix.to_string(PrefixLenBits{0}) == "");
+	REQUIRE(prefix.to_string(PrefixLenBits{64}) == "1111222233334444");
+	REQUIRE(prefix.to_string(PrefixLenBits{4}) == "1");
+	REQUIRE(prefix.to_string(PrefixLenBits{60}) == "111122223333444");
+}
+
 TEST_CASE("byte_prefix_branch_bits", "[prefix]")
 {
 	uint32_t query = 0x12345678;

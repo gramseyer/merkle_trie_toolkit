@@ -66,16 +66,18 @@ TEST_CASE("check inserts", "[amt]")
 
 	auto* root = m.get_subnode_ref_and_invalidate_hash(UInt64Prefix(0), PrefixLenBits(0));
 
-	for (uint64_t i = 0; i < 10; i++)
+	for (uint64_t i = 0; i < 1000; i++)
 	{
 		uint64_t query = (i * 17) % 6701;  //6701 is prime
+
+		std::printf("root insert %llx\n", query);
 
 		root -> template insert<OverwriteInsertFn<EmptyValue>, EmptyValue>(UInt64Prefix(query), EmptyValue{}, m.get_gc());
 	}
 
 	auto h1 = m.hash_and_normalize();
 
-	for (uint64_t i = 0; i < 10; i++)
+	for (uint64_t i = 0; i < 1000; i++)
 	{
 		uint64_t query = ((i + 1000) * 17) % 6701;  //6701 is prime
 
@@ -102,6 +104,13 @@ TEST_CASE("force recompute", "[amt]")
 	auto h2 = m.hash_and_normalize();
 
 	REQUIRE(h1 != h2);
+
+	base -> template insert<OverwriteInsertFn<EmptyValue>>(UInt64Prefix(0x0), EmptyValue{}, m.get_gc());
+
+	REQUIRE(h2 == m.hash_and_normalize());
 }
+
+
+
 
 } // namespace trie

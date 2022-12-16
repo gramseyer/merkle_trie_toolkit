@@ -334,7 +334,12 @@ public:
 	std::string to_string(const PrefixLenBits len) const {
 		
 		auto bytes = get_bytes(len);
-		return detail::array_to_str(bytes.data(), len.num_prefix_bytes());
+		auto str = detail::array_to_str(bytes.data(), len.num_prefix_bytes());
+		if (len.len % 8 == 4)
+		{
+			str = str.substr(0, str.size() - 1);
+		}
+		return str;
 	}
 
 	//! Sets the bits immediately following the first fixed_len_bits bits
@@ -483,7 +488,12 @@ public:
 
 	std::string to_string(const PrefixLenBits& len) const {
 		auto bytes = get_bytes(len);
-		return detail::array_to_str(bytes.data(), len.num_prefix_bytes());
+		auto str = detail::array_to_str(bytes.data(), len.num_prefix_bytes());
+		if (len.len % 8 == 4)
+		{
+			str = str.substr(0, str.size() - 1);
+		}
+		return str;
 	}
 
 	//! Modify the prefix by setting the bits after fixed_len to bb

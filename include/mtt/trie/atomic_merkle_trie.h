@@ -124,6 +124,7 @@ public:
 			{
 				throw std::runtime_error("wrong ctor used");
 			}
+			this -> prefix.truncate(len);
 			std::printf("alloc %p\n", this);
 		}
 
@@ -343,10 +344,11 @@ AMTN_DECL::insert(
 	gc_t& gc)
 {
 	invalidate_hash();
-	std::printf("insert %s on %p\n", new_prefix.to_string(MAX_KEY_LEN_BITS).c_str(), this);
+	std::printf("insert %s on %p (prefix %s, len %u)\n", new_prefix.to_string(MAX_KEY_LEN_BITS).c_str(), this,
+		prefix.to_string(prefix_len).c_str(), prefix_len.len);
 
 	auto prefix_match_len = get_prefix_match_len(new_prefix);
-	trie_assert(prefix_match_len >= prefix_len, "invalid insertion");
+	trie_assert(prefix_match_len == prefix_len, "invalid insertion");
 
 	if (is_leaf())
 	{
@@ -354,7 +356,9 @@ AMTN_DECL::insert(
 		return;
 	}
 
-	const uint8_t bb = prefix.get_branch_bits(prefix_match_len);
+	const uint8_t bb = new_prefix.get_branch_bits(prefix_len);
+
+	std::printf("bb = %x\n", bb);
 
 	node_t* child = get_child(bb);
 
@@ -374,13 +378,23 @@ AMTN_DECL::insert(
 		} 
 		else
 		{
+
 			PrefixLenBits join_len = child->get_prefix_match_len(new_prefix);
 
+			std::printf("join_len %u prefix_len %u child_prefix_len %u\n", join_len.len, prefix_len.len, child -> get_prefix_len().len);
+
+			if (join_len >= child -> get_prefix_len())
+			{
+				child -> template insert<InsertFn>(new_prefix, std::move(new_value), gc);
+				return;
+			}
+
 			node_t* new_node = new node_t(new_prefix, join_len);
-			new_node -> set_unique_child(bb, child);
+			new_node -> set_unique_child(child->get_prefix().get_branch_bits(join_len), child);
 
 			if (try_add_child(bb, child, new_node))
 			{
+				std::printf("recursing with join_len = %lu\n", join_len.len);
 				new_node -> commit_ownership();
 				new_node -> template insert<InsertFn, InsertedValue>(new_prefix, std::move(new_value), gc);
 				return;
@@ -605,9 +619,6 @@ AMTN_DECL :: compute_hash_and_normalize(gc_t& gc)
 
 	return sz_delta;
 }
-
-
-
 
 #undef AMTN_DECL
 #undef AMTN_TEMPLATE
