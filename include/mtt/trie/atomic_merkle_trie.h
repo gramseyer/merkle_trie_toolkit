@@ -51,7 +51,7 @@ public:
 				auto& ptrs = l -> nodes;
 				for (auto* ptr : ptrs)
 				{
-					std::printf("deleting %p\n", ptr);
+					//std::printf("deleting %p\n", ptr);
 					delete ptr;
 				}
 			}
@@ -107,7 +107,7 @@ public:
 		, size(0)
 		, hash()
 		{
-			std::printf("alloc %p\n", this);
+			//std::printf("alloc %p\n", this);
 		}
 
 	// map node
@@ -125,7 +125,7 @@ public:
 				throw std::runtime_error("wrong ctor used");
 			}
 			this -> prefix.truncate(len);
-			std::printf("alloc %p\n", this);
+			//std::printf("alloc %p\n", this);
 		}
 
 	void set_unique_child(uint8_t bb, node_t* ptr)
@@ -144,7 +144,7 @@ public:
 		, size(0)
 		, hash()
 	{
-		std::printf("alloc %p\n", this);
+		//std::printf("alloc %p\n", this);
 	}
 
 	template<typename InsertFn, typename InsertedValueType>
@@ -180,7 +180,7 @@ public:
 
 	~AtomicMerkleTrieNode()
 	{
-		std::printf("~AtomicMerkleTrieNode() %p\n", this);
+		//std::printf("~AtomicMerkleTrieNode() %p\n", this);
 		if (is_leaf())
 		{
 			value.~value_t();
@@ -194,7 +194,7 @@ public:
 					node_t* ptr = children[bb].load(std::memory_order_relaxed);
 					if (ptr != nullptr)
 					{
-						std::printf("recursive delete %p\n", ptr);
+					//	std::printf("recursive delete %p\n", ptr);
 						delete ptr;
 					}
 				}
@@ -344,8 +344,6 @@ AMTN_DECL::insert(
 	gc_t& gc)
 {
 	invalidate_hash();
-	std::printf("insert %s on %p (prefix %s, len %u)\n", new_prefix.to_string(MAX_KEY_LEN_BITS).c_str(), this,
-		prefix.to_string(prefix_len).c_str(), prefix_len.len);
 
 	auto prefix_match_len = get_prefix_match_len(new_prefix);
 	trie_assert(prefix_match_len == prefix_len, "invalid insertion");
@@ -357,8 +355,6 @@ AMTN_DECL::insert(
 	}
 
 	const uint8_t bb = new_prefix.get_branch_bits(prefix_len);
-
-	std::printf("bb = %x\n", bb);
 
 	node_t* child = get_child(bb);
 
@@ -381,8 +377,6 @@ AMTN_DECL::insert(
 
 			PrefixLenBits join_len = child->get_prefix_match_len(new_prefix);
 
-			std::printf("join_len %u prefix_len %u child_prefix_len %u\n", join_len.len, prefix_len.len, child -> get_prefix_len().len);
-
 			if (join_len >= child -> get_prefix_len())
 			{
 				child -> template insert<InsertFn>(new_prefix, std::move(new_value), gc);
@@ -394,7 +388,6 @@ AMTN_DECL::insert(
 
 			if (try_add_child(bb, child, new_node))
 			{
-				std::printf("recursing with join_len = %lu\n", join_len.len);
 				new_node -> commit_ownership();
 				new_node -> template insert<InsertFn, InsertedValue>(new_prefix, std::move(new_value), gc);
 				return;

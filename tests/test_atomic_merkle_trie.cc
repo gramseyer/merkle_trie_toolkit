@@ -59,7 +59,6 @@ TEST_CASE("normalize cleans up in case of no inserts", "[amt]")
 
 TEST_CASE("check inserts", "[amt]")
 {
-	std::printf("start\n");
 	using mt = AtomicMerkleTrie<UInt64Prefix, EmptyValue, 256>;
 
 	mt m;
@@ -69,8 +68,6 @@ TEST_CASE("check inserts", "[amt]")
 	for (uint64_t i = 0; i < 1000; i++)
 	{
 		uint64_t query = (i * 17) % 6701;  //6701 is prime
-
-		std::printf("root insert %llx\n", query);
 
 		root -> template insert<OverwriteInsertFn<EmptyValue>, EmptyValue>(UInt64Prefix(query), EmptyValue{}, m.get_gc());
 	}
