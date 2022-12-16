@@ -13,7 +13,6 @@
 #include <utils/time.h>
 #include <utils/threadlocal_cache.h>
 
-#include <tbb/global_control.h>
 #include <tbb/parallel_for.h>
 
 namespace trie
