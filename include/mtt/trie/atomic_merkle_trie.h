@@ -614,7 +614,8 @@ AMTN_DECL :: get_or_make_subnode_ref(const prefix_t& query_prefix, const PrefixL
 			if (try_add_child(bb, ptr, intermediate))
 			{
 				intermediate -> commit_ownership();
-				return intermediate;
+
+				return intermediate -> template get_or_make_subnode_ref<InsertFn>(query_prefix, query_len, gc);
 			}
 			gc.free(intermediate);
 		}
