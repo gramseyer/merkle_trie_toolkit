@@ -109,6 +109,7 @@ TEST_CASE("force recompute", "[amt]")
 
 TEST_CASE("ensure full length key", "[amt]")
 {
+	std::printf("test start\n");
 	using mt = AtomicMerkleTrie<UInt64Prefix, EmptyValue, 256>;
 
 	mt m;
