@@ -149,19 +149,25 @@ public:
 
 	template<typename InsertFn, typename InsertedValueType>
 	static value_t 
-	create_new_value(typename std::enable_if<
+	create_new_value(const prefix_t& key,
+		typename std::enable_if<
             !std::is_same<value_t, InsertedValueType>::value,
             InsertedValueType&&>::type v)
 	{
-		return InsertFn::new_value(v);
+		std::printf("weird new_value: %p\n", &v);
+		auto val = InsertFn::new_value(key);
+		InsertFn::value_insert(val, std::move(v));
+		return val;
 	}
 
 	template<typename InsertFn, typename InsertedValueType>
 	static value_t 
-	create_new_value(typename std::enable_if<
+	create_new_value(const prefix_t& key,
+		typename std::enable_if<
             std::is_same<value_t, InsertedValueType>::value,
             InsertedValueType&&>::type v)
 	{
+		std::printf("new_value: %p\n", &v);
 		return v;
 	}
 
@@ -174,6 +180,8 @@ public:
 	{
 		if (!expr)
 		{
+			std::printf("error: %s\n", msg);
+			std::fflush(stdout);
 			throw std::runtime_error(msg);
 		}
 	}
@@ -263,6 +271,7 @@ public:
     void invalidate_hash_to_node(const node_t* target);
     void invalidate_hash_to_key(const prefix_t& query);
 
+    template<typename InsertFn>
     node_t* get_or_make_subnode_ref(const prefix_t& query_prefix, const PrefixLenBits query_len, gc_t& gc);
 
     void append_hash_to_vec(std::vector<uint8_t>& bytes)
@@ -299,9 +308,10 @@ class AtomicMerkleTrie
 
 public:
 
+	template<typename InsertFn = OverwriteInsertFn<value_t>>
 	node_t* get_subnode_ref_and_invalidate_hash(const prefix_t& query_prefix, const PrefixLenBits query_len)
 	{
-		auto* out = root->get_or_make_subnode_ref(query_prefix, query_len, gc);
+		auto* out = root->template get_or_make_subnode_ref<InsertFn>(query_prefix, query_len, gc);
 		root -> invalidate_hash_to_node(out);
 		return out;
 	}
@@ -366,11 +376,15 @@ AMTN_DECL::insert(
 {
 	invalidate_hash();
 
+	std::printf("insert of %p to prefix %s cur prefix %s\n", &new_value, new_prefix.to_string(MAX_KEY_LEN_BITS).c_str(),
+		prefix.to_string(prefix_len).c_str());
+
 	auto prefix_match_len = get_prefix_match_len(new_prefix);
 	trie_assert(prefix_match_len == prefix_len, "invalid insertion");
 
 	if (is_leaf())
 	{
+		std::printf("insert value\n");
 		InsertFn::value_insert(value, std::move(new_value));
 		return;
 	}
@@ -385,10 +399,11 @@ AMTN_DECL::insert(
 		if (child == nullptr)
 		{
 			// insert new node
-			node_t* new_node = new node_t(new_prefix, create_new_value<InsertFn, InsertedValue>(std::move(new_value)));
+			node_t* new_node = new node_t(new_prefix, create_new_value<InsertFn, InsertedValue>(new_prefix, std::move(new_value)));
 
 			if (try_add_child(bb, child, new_node))
 			{
+				std::printf("inserted new child\n");
 				return;
 			}
 			gc.free(new_node);
@@ -400,6 +415,7 @@ AMTN_DECL::insert(
 
 			if (join_len >= child -> get_prefix_len())
 			{
+				std::printf("insert recursing\n");
 				child -> template insert<InsertFn>(new_prefix, std::move(new_value), gc);
 				return;
 			}
@@ -409,6 +425,7 @@ AMTN_DECL::insert(
 
 			if (try_add_child(bb, child, new_node))
 			{
+				std::printf("new intermediate node\n");
 				new_node -> commit_ownership();
 				new_node -> template insert<InsertFn, InsertedValue>(new_prefix, std::move(new_value), gc);
 				return;
@@ -499,6 +516,7 @@ AMTN_DECL :: extract_singlechild()
 }
 
 AMTN_TEMPLATE
+template<typename InsertFn>
 AMTN_DECL* 
 AMTN_DECL :: get_or_make_subnode_ref(const prefix_t& query_prefix, const PrefixLenBits query_len, gc_t& gc)
 {
@@ -511,8 +529,8 @@ AMTN_DECL :: get_or_make_subnode_ref(const prefix_t& query_prefix, const PrefixL
 		return this;
 	}
 
-	trie_assert(prefix_len < MAX_KEY_LEN_BITS, "can't be value here");
-	trie_assert(query_len < MAX_KEY_LEN_BITS, "can't ask for value here");
+	//trie_assert(prefix_len < MAX_KEY_LEN_BITS, "can't be value here");
+	//trie_assert(query_len < MAX_KEY_LEN_BITS, "can't ask for value here");
 
 	const uint8_t bb = query_prefix.get_branch_bits(prefix_len);
 
@@ -522,7 +540,15 @@ AMTN_DECL :: get_or_make_subnode_ref(const prefix_t& query_prefix, const PrefixL
 	{
 		if (ptr == nullptr)
 		{
-			node_t* new_child = new node_t(query_prefix, query_len);
+			node_t* new_child = nullptr;
+			if (query_len == MAX_KEY_LEN_BITS)
+			{
+				new_child = new node_t(query_prefix, InsertFn::new_value(query_prefix));
+			} 
+			else
+			{
+				new_child = new node_t(query_prefix, query_len);
+			}
 			if (try_add_child(bb, ptr, new_child))
 			{
 				new_child -> commit_ownership();
@@ -535,7 +561,7 @@ AMTN_DECL :: get_or_make_subnode_ref(const prefix_t& query_prefix, const PrefixL
 			auto child_match_len = ptr -> get_prefix_match_len(query_prefix, query_len);
 			if (child_match_len == ptr -> get_prefix_len())
 			{
-				return ptr -> get_or_make_subnode_ref(query_prefix, query_len, gc);
+				return ptr -> template get_or_make_subnode_ref<InsertFn>(query_prefix, query_len, gc);
 			}
 
 			node_t* intermediate = new node_t(query_prefix, query_len);

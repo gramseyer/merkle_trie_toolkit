@@ -107,6 +107,23 @@ TEST_CASE("force recompute", "[amt]")
 	REQUIRE(h2 == m.hash_and_normalize());
 }
 
+TEST_CASE("ensure full length key", "[amt]")
+{
+	using mt = AtomicMerkleTrie<UInt64Prefix, EmptyValue, 256>;
+
+	mt m;
+
+	auto h = m.hash_and_normalize();
+
+	auto* base = m.get_subnode_ref_and_invalidate_hash(UInt64Prefix(0), PrefixLenBits(64));
+
+	base -> template insert<OverwriteInsertFn<EmptyValue>>(UInt64Prefix(0), EmptyValue{}, m.get_gc());
+
+	auto h2 = m.hash_and_normalize();
+
+	REQUIRE(h != h2);
+}
+
 TEST_CASE("deletions", "[amt]")
 {
 	using mt = AtomicMerkleTrie<UInt64Prefix, EmptyValue, 256>;
