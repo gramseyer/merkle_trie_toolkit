@@ -51,7 +51,6 @@ public:
 				auto& ptrs = l -> nodes;
 				for (auto* ptr : ptrs)
 				{
-					//std::printf("deleting %p\n", ptr);
 					delete ptr;
 				}
 			}
@@ -108,7 +107,6 @@ public:
 		, size(0)
 		, hash()
 		{
-			//std::printf("alloc %p\n", this);
 		}
 
 	// map node
@@ -126,7 +124,6 @@ public:
 				throw std::runtime_error("wrong ctor used");
 			}
 			this -> prefix.truncate(len);
-			//std::printf("alloc %p\n", this);
 		}
 
 	void set_unique_child(uint8_t bb, node_t* ptr)
@@ -145,7 +142,6 @@ public:
 		, size(0)
 		, hash()
 	{
-		//std::printf("alloc %p\n", this);
 	}
 
 	void
@@ -193,7 +189,6 @@ public:
 
 	~AtomicMerkleTrieNode()
 	{
-		//std::printf("~AtomicMerkleTrieNode() %p\n", this);
 		if (is_leaf())
 		{
 			value.~value_t();
@@ -207,7 +202,6 @@ public:
 					node_t* ptr = children[bb].load(std::memory_order_relaxed);
 					if (ptr != nullptr)
 					{
-					//	std::printf("recursive delete %p\n", ptr);
 						delete ptr;
 					}
 				}
@@ -400,15 +394,14 @@ AMTN_DECL::insert(
 {
 	invalidate_hash();
 
-	std::printf("insert of %p to prefix %s cur prefix %s\n", &new_value, new_prefix.to_string(MAX_KEY_LEN_BITS).c_str(),
-		prefix.to_string(prefix_len).c_str());
+	//std::printf("insert of %p to prefix %s cur prefix %s\n", &new_value, new_prefix.to_string(MAX_KEY_LEN_BITS).c_str(),
+	//	prefix.to_string(prefix_len).c_str());
 
 	auto prefix_match_len = get_prefix_match_len(new_prefix);
 	trie_assert(prefix_match_len == prefix_len, "invalid insertion");
 
 	if (is_leaf())
 	{
-		std::printf("insert value\n");
 		InsertFn::value_insert(value, std::move(new_value));
 		validate_value();
 		return;
@@ -429,7 +422,7 @@ AMTN_DECL::insert(
 
 			if (try_add_child(bb, child, new_node))
 			{
-				std::printf("inserted new child\n");
+				//std::printf("inserted new child\n");
 				return;
 			}
 			gc.free(new_node);
@@ -441,7 +434,7 @@ AMTN_DECL::insert(
 
 			if (join_len >= child -> get_prefix_len())
 			{
-				std::printf("insert recursing\n");
+			//	std::printf("insert recursing\n");
 				child -> template insert<InsertFn>(new_prefix, std::move(new_value), gc);
 				return;
 			}
@@ -451,7 +444,7 @@ AMTN_DECL::insert(
 
 			if (try_add_child(bb, child, new_node))
 			{
-				std::printf("new intermediate node\n");
+			//	std::printf("new intermediate node\n");
 				new_node -> commit_ownership();
 				new_node -> template insert<InsertFn, InsertedValue>(new_prefix, std::move(new_value), gc);
 				return;
@@ -550,25 +543,19 @@ template<typename InsertFn>
 AMTN_DECL* 
 AMTN_DECL :: get_or_make_subnode_ref(const prefix_t& query_prefix, const PrefixLenBits query_len, gc_t& gc)
 {
-	std::printf("get_or_make_subnode_ref: prefix %s query %s\n", 
-		prefix.to_string(prefix_len).c_str(),
-		query_prefix.to_string(query_len).c_str());
+//	std::printf("get_or_make_subnode_ref: prefix %s query %s\n", 
+//		prefix.to_string(prefix_len).c_str(),
+//		query_prefix.to_string(query_len).c_str());
 
 	auto matchlen = get_prefix_match_len(query_prefix, query_len);
-
-	std::printf("match_len = %u\n", matchlen.len);
 
 	trie_assert(matchlen >= prefix_len, "invalid get_or_make_subnode_ref");
 
 	if (query_len == prefix_len)
 	{
-		std::printf("gomsr: return self\n");
 		return this;
 	}
-
-	//trie_assert(prefix_len < MAX_KEY_LEN_BITS, "can't be value here");
-	//trie_assert(query_len < MAX_KEY_LEN_BITS, "can't ask for value here");
-
+	
 	const uint8_t bb = query_prefix.get_branch_bits(prefix_len);
 
 	node_t* ptr = get_child(bb);
@@ -580,12 +567,10 @@ AMTN_DECL :: get_or_make_subnode_ref(const prefix_t& query_prefix, const PrefixL
 			node_t* new_child = nullptr;
 			if (query_len == MAX_KEY_LEN_BITS)
 			{
-				std::printf("call here 1\n");
 				new_child = new node_t(query_prefix, InsertFn::new_value(query_prefix));
 			} 
 			else
 			{
-				std::printf("call here 2\n");
 				new_child = new node_t(query_prefix, query_len);
 			}
 			if (try_add_child(bb, ptr, new_child))
@@ -597,16 +582,14 @@ AMTN_DECL :: get_or_make_subnode_ref(const prefix_t& query_prefix, const PrefixL
 		} 
 		else
 		{
-			std::printf("child exists: %s\n", ptr -> get_prefix().to_string(ptr -> get_prefix_len()).c_str());
+			//std::printf("child exists: %s\n", ptr -> get_prefix().to_string(ptr -> get_prefix_len()).c_str());
 			auto child_match_len = ptr -> get_prefix_match_len(query_prefix, query_len);
-			std::printf("match len: %u\n", child_match_len.len);
+			//std::printf("match len: %u\n", child_match_len.len);
 			if (child_match_len == ptr -> get_prefix_len())
 			{
 				return ptr -> template get_or_make_subnode_ref<InsertFn>(query_prefix, query_len, gc);
 			}
 			
-			std::printf("call here 3\n");
-
 			node_t* intermediate = new node_t(query_prefix, child_match_len);
 			uint8_t child_bb = ptr -> get_prefix().get_branch_bits(child_match_len);
 			intermediate -> set_unique_child(child_bb, ptr);
@@ -674,7 +657,6 @@ AMTN_DECL :: compute_hash_and_normalize(gc_t& gc)
 		uint8_t child_count = child -> get_num_children();
 		if (child_count == 0)
 		{
-			std::printf("erasing child: %s\n", child -> get_prefix().to_string(child -> get_prefix_len()).c_str());
 			erase_child(bb, gc);
 		} 
 		else if (child_count == 1)
@@ -698,7 +680,6 @@ AMTN_DECL :: compute_hash_and_normalize(gc_t& gc)
 	size.store(new_size, std::memory_order_release);
 	if (num_children <= 1 && prefix_len.len != 0)
 	{
-		std::printf("child %s will be erased\n", prefix.to_string(prefix_len).c_str());
 		// don't bother hashing, except special casing the root node
 		return new_size;
 	}
