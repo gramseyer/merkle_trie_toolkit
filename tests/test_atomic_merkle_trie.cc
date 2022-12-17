@@ -159,7 +159,4 @@ TEST_CASE("deletions", "[amt]")
 	}
 }
 
-
-
-
 } // namespace trie

@@ -99,7 +99,7 @@ public:
 
 	// value node
 	AtomicMerkleTrieNode(prefix_t const& prefix, value_t&& value)
-		: value(value)
+		: value(std::move(value))
 		, prefix(prefix)
 		, prefix_len(MAX_KEY_LEN_BITS)
 		, hash_valid(false)
@@ -261,6 +261,7 @@ public:
     }
 
     void invalidate_hash_to_node(const node_t* target);
+    void invalidate_hash_to_key(const prefix_t& query);
 
     node_t* get_or_make_subnode_ref(const prefix_t& query_prefix, const PrefixLenBits query_len, gc_t& gc);
 
@@ -281,6 +282,8 @@ public:
     }
 
     void delete_value(const prefix_t& delete_prefix, gc_t& gc);
+
+    const value_t* get_value(const prefix_t& query_prefix) const;
 };
 
 
@@ -320,6 +323,11 @@ public:
 		gc.gc();
 	}
 
+	void do_gc()
+	{
+		gc.gc();
+	}
+
 	~AtomicMerkleTrie()
 	{
 		gc.free(root);
@@ -331,6 +339,17 @@ public:
 	{
 		root -> compute_hash_and_normalize(gc);
 		return root -> get_hash();
+	}
+
+	const value_t* get_value(prefix_t const& query) const
+	{
+		return root -> get_value(query);
+	}
+
+	value_t* get_value(prefix_t const& query)
+	{
+		return const_cast<value_t*>(
+			const_cast<const AtomicMerkleTrie<prefix_t, value_t, TLCACHE_SIZE>*>(this) -> get_value(query));
 	}
 };
 
@@ -420,6 +439,25 @@ AMTN_DECL :: invalidate_hash_to_node(const node_t* target)
 	trie_assert(child != nullptr, "found null child in invalidate_hash_to_node");
 
 	child -> invalidate_hash_to_node(target);
+}
+
+AMTN_TEMPLATE
+void
+AMTN_DECL :: invalidate_hash_to_key(const prefix_t& query)
+{
+	invalidate_hash();
+
+	if (is_leaf())
+	{
+		trie_assert(prefix == query, "mismatch on invalidate_hash_to_key");
+		return;
+	}
+
+	auto bb = query.get_branch_bits(prefix_len);
+	node_t* child = get_child(bb);
+	trie_assert(child != nullptr, "invalid child found");
+
+	child -> invalidate_hash_to_key(query);
 }
 
 AMTN_TEMPLATE
@@ -638,6 +676,37 @@ AMTN_DECL :: delete_value(const prefix_t& delete_prefix, gc_t& gc)
 
 	ptr -> delete_value(delete_prefix, gc);
 }
+
+AMTN_TEMPLATE
+const value_t* 
+AMTN_DECL::get_value(const prefix_t& query_prefix) const
+{
+	if (is_leaf())
+	{
+		if (query_prefix == prefix)
+		{
+			return &value;
+		}
+		return nullptr;
+	}
+
+	auto match_len = get_prefix_match_len(query_prefix);
+
+	if (match_len < prefix_len)
+	{
+		return nullptr;
+	}
+
+	const auto bb = query_prefix.get_branch_bits(prefix_len);
+
+	auto* ptr = get_child(bb);
+	if (ptr == nullptr)
+	{
+		return nullptr;
+	}
+	return ptr -> get_value(query_prefix);
+}
+
 
 
 #undef AMTN_DECL
