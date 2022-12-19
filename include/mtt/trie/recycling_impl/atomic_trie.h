@@ -10,6 +10,7 @@
 #include "mtt/trie/prefix.h"
 #include "mtt/trie/recycling_impl/allocator.h"
 #include "mtt/trie/recycling_impl/ranges.h"
+#include "mtt/trie/recycling_impl/atomic_ranges.h"
 #include "mtt/trie/types.h"
 #include "mtt/trie/utils.h"
 
@@ -226,6 +227,7 @@ class alignas(64) AtomicTrieNode : private utils::NonMovableOrCopyable
         return children_list();
     }
 
+    std::vector<uint64_t> children_and_sizes_list() const;
 
     uint32_t size() const;
 
@@ -262,6 +264,11 @@ class alignas(64) AtomicTrieNode : private utils::NonMovableOrCopyable
         }
     }
 
+    template<typename VectorType, auto get_fn>
+    void accumulate_values_parallel_worker(VectorType& output,
+                                            size_t vector_offset,
+                                            const allocator_t& allocator) const;
+
     // TESTING
 
     uint32_t deep_sizecheck(allocator_t const& allocator) const
@@ -294,6 +301,32 @@ class alignas(64) AtomicTrieNode : private utils::NonMovableOrCopyable
             total_size += got_sz;
         }
         return total_size;
+    }
+
+    const value_t* get_value(const prefix_t& query_prefix, allocator_t const& allocator) const
+    {
+        auto match_len = get_prefix_match_len(query_prefix);
+        if (match_len < prefix_len) {
+            return nullptr;
+        }
+        //match_len == prefix_len
+
+        if (match_len == MAX_KEY_LEN_BITS)
+        {
+            return &allocator.get_value(value_pointer);
+        }
+
+        auto bb = query_prefix.get_branch_bits(match_len);
+
+        uint32_t relevant_child = (children.get(bb) >> 32);
+
+        if (relevant_child == UINT32_MAX)
+        {
+            return nullptr;
+        }
+
+        return allocator.get_object(relevant_child).get_value(query_prefix, allocator);
+
     }
 };
 
@@ -369,17 +402,42 @@ class AtomicTrie
         return hash_serial();
     }
 
-    template<typename ValueModifyFn, uint32_t GRAIN_SIZE>
-    void parallel_batch_value_modify(ValueModifyFn& fn) const
+    template<typename ValueModifyFn>
+    void parallel_batch_value_modify(ValueModifyFn& fn, uint32_t GRAIN_SIZE) const
     {
-        RecyclingApplyRange<node_t, GRAIN_SIZE> range(&root, allocator);
+        AtomicRecyclingApplyRange<node_t> range(&root, allocator, GRAIN_SIZE);
         // guaranteed that range.work_list contains no overlaps
 
         tbb::parallel_for(range, [&fn, this](const auto& range) {
             for (size_t i = 0; i < range.work_list.size(); i++) {
 
-                ConstApplyableSubnodeRef ref{ range.work_list[i], allocator };
+                auto const* ptr = &allocator.get_object(range.work_list[i] >> 32);
+
+                ConstApplyableSubnodeRef ref{ ptr, allocator };
                 fn(ref);
+            }
+        });
+    }
+
+    template<typename VectorType, auto get_fn>
+    void accumulate_values_parallel(VectorType& out, uint32_t GRAIN_SIZE) const
+    {
+        AtomicRecyclingAccumulateValuesRange<node_t> range(root.children_and_sizes_list(), allocator, GRAIN_SIZE);
+
+        out.resize(size());
+
+        tbb::parallel_for(range, [this, &out] (const auto& range)
+        {
+            uint32_t vector_offset = range.vector_offset;
+
+            for (size_t i = 0; i < range.work_list.size(); i++) {
+                uint32_t ptr = range.work_list[i] >> 32;
+                uint32_t sz = range.work_list[i] & 0xFFFF'FFFF;
+
+                auto& work_node = allocator.get_object(ptr);
+                work_node.template accumulate_values_parallel_worker<VectorType, get_fn>(
+                    out, vector_offset, allocator);
+                vector_offset += sz;
             }
         });
     }
@@ -391,7 +449,7 @@ class AtomicTrie
         allocator.reset();
     }
 
-    uint32_t size()
+    uint32_t size() const
     {
         return root.size();
     }
@@ -399,6 +457,11 @@ class AtomicTrie
     // TESTING
 
     uint32_t deep_sizecheck() const { return root.deep_sizecheck(allocator); }
+
+    const value_t* get_value(const prefix_t& query_prefix) const
+    {
+        return root.get_value(query_prefix, allocator);
+    }
 };
 
 template<typename ValueType, typename prefix_t>
@@ -559,6 +622,53 @@ ATN_DECL :: children_list() const
 
     }
     return out;
+}
+
+ATN_TEMPLATE
+std::vector<uint64_t> 
+ATN_DECL :: children_and_sizes_list() const
+{
+    std::vector<uint64_t> out;
+    for (uint8_t i = 0; i < 16; i++)
+    {
+        uint64_t ptr_and_size = children.get(i);
+        uint32_t ptr = (ptr_and_size >> 32);
+        if (ptr != UINT32_MAX)
+        {
+            out.push_back(ptr_and_size);
+        }
+
+    }
+    return out;
+}
+
+ATN_TEMPLATE
+template<typename VectorType, auto get_fn>
+void
+ATN_DECL :: accumulate_values_parallel_worker(VectorType& output,
+                                            size_t vector_offset,
+                                            const allocator_t& allocator) const
+{
+    if (prefix_len == MAX_KEY_LEN_BITS) {
+        output[vector_offset] = get_fn(allocator.get_value(value_pointer));
+        //AccumulatorFn::accumulate(output, vector_offset, children.value(allocator));
+        //output[vector_offset] = children.value(allocator);
+        return;
+    }
+
+    for (uint8_t bb = 0; bb < 16; bb++)
+    {
+        uint64_t ptr_and_sz = children.get(bb);
+
+        uint32_t ptr = ptr_and_sz >> 32;
+        if (ptr == UINT32_MAX)
+        {
+            continue;
+        }
+        auto& ref = allocator.get_object(ptr);
+        ref.template accumulate_values_parallel_worker<VectorType, get_fn>(output, vector_offset, allocator);
+        vector_offset == (ptr_and_sz & 0xFFFF'FFFF);
+    }
 }
 
 ATN_TEMPLATE

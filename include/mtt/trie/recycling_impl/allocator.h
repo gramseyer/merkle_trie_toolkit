@@ -231,6 +231,7 @@ struct RecyclingTrieNodeAllocator : private utils::NonMovableOrCopyable
     {
         uint32_t idx = value_ptr >> OFFSET_BITS;
         uint32_t offset = value_ptr & OFFSET_MASK;
+
         return (*value_buffers[idx])[offset];
     }
 
