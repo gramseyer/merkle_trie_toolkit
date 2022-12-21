@@ -221,7 +221,7 @@ public:
            gc_t& gc);
 
     int32_t
-    compute_hash_and_normalize(gc_t& gc);
+    compute_hash_and_normalize(gc_t& gc, std::vector<uint8_t>& digest_bytes);
 
     uint8_t get_num_children() const;
 
@@ -365,7 +365,8 @@ public:
 
 	Hash hash_and_normalize()
 	{
-		root -> compute_hash_and_normalize(gc);
+		std::vector<uint8_t> digest_bytes;
+		root -> compute_hash_and_normalize(gc, digest_bytes);
 		return root -> get_hash();
 	}
 
@@ -555,7 +556,7 @@ AMTN_DECL :: get_or_make_subnode_ref(const prefix_t& query_prefix, const PrefixL
 	{
 		return this;
 	}
-	
+
 	const uint8_t bb = query_prefix.get_branch_bits(prefix_len);
 
 	node_t* ptr = get_child(bb);
@@ -609,14 +610,12 @@ AMTN_DECL :: get_or_make_subnode_ref(const prefix_t& query_prefix, const PrefixL
 
 AMTN_TEMPLATE
 int32_t
-AMTN_DECL :: compute_hash_and_normalize(gc_t& gc)
+AMTN_DECL :: compute_hash_and_normalize(gc_t& gc, std::vector<uint8_t>& digest_bytes)
 {
 	if (hash_valid)
 	{
 		return size.load(std::memory_order_acquire);
 	}
-
-	std::vector<uint8_t> digest_bytes;
 
 	if (is_leaf())
 	{
@@ -624,6 +623,9 @@ AMTN_DECL :: compute_hash_and_normalize(gc_t& gc)
 		{
 			return 0;
 		}
+
+		digest_bytes.clear();
+
 		write_node_header(digest_bytes, prefix, prefix_len);
         value.copy_data(digest_bytes);
 
@@ -652,7 +654,7 @@ AMTN_DECL :: compute_hash_and_normalize(gc_t& gc)
 		node_t* child = get_child(bb);
 		if (child == nullptr) continue;
 
-		new_size += child -> compute_hash_and_normalize(gc);
+		new_size += child -> compute_hash_and_normalize(gc, digest_bytes);
 
 		uint8_t child_count = child -> get_num_children();
 		if (child_count == 0)
@@ -683,6 +685,8 @@ AMTN_DECL :: compute_hash_and_normalize(gc_t& gc)
 		// don't bother hashing, except special casing the root node
 		return new_size;
 	}
+
+	digest_bytes.clear();
 
 	write_node_header(digest_bytes, prefix, prefix_len);
     bv.write(digest_bytes);
