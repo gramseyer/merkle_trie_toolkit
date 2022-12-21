@@ -419,6 +419,23 @@ class AtomicTrie
         });
     }
 
+    template<typename ValueModifyFn>
+    void parallel_batch_value_modify(ValueModifyFn& fn, uint32_t GRAIN_SIZE)
+    {
+        AtomicRecyclingApplyRange<node_t> range(&root, allocator, GRAIN_SIZE);
+        // guaranteed that range.work_list contains no overlaps
+
+        tbb::parallel_for(range, [&fn, this](const auto& range) {
+            for (size_t i = 0; i < range.work_list.size(); i++) {
+
+                auto const* ptr = &allocator.get_object(range.work_list[i] >> 32);
+
+                ApplyableSubnodeRef ref{ ptr, allocator };
+                fn(ref);
+            }
+        });
+    }
+
     template<typename VectorType, auto get_fn>
     void accumulate_values_parallel(VectorType& out, uint32_t GRAIN_SIZE) const
     {
