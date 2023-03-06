@@ -7,6 +7,8 @@
 
 #include "utils/assert.h"
 
+#include <tbb/blocked_range.h> // for tbb::split
+
 namespace trie
 {
 
