@@ -12,7 +12,8 @@
 #include <tbb/parallel_for.h>
 #include <tbb/parallel_reduce.h>
 
-#include "mtt/trie/prefix.h"
+#include "mtt/common/prefix.h"
+
 #include "mtt/trie/configs.h"
 #include "mtt/trie/hash_log.h"
 
@@ -100,7 +101,7 @@ class alignas(64) RecyclingTrieNode : private utils::NonMovableOrCopyable
     children_map_t children; // 9 bytes
 
     std::atomic<bool> hash_valid = false; // 1
-    SpinMutex mtx;                        // 1
+    utils::SpinMutex mtx;                 // 1
 
     PrefixLenBits prefix_len; // 2, could be made 1
 
@@ -324,9 +325,9 @@ class alignas(64) RecyclingTrieNode : private utils::NonMovableOrCopyable
     template<typename MergeFn>
     metadata_t merge_in(ptr_t node, allocation_context_t& allocator);
 
-    SpinLockGuard lock() const { return SpinLockGuard(mtx); }
+    auto lock() const { return utils::SpinLockGuard(mtx); }
 
-    SpinUniqueLock unique_lock() const { return SpinUniqueLock(mtx); }
+    auto unique_lock() const { return utils::SpinUniqueLock(mtx); }
 
     bool is_leaf() const { return prefix_len == MAX_KEY_LEN_BITS; }
 

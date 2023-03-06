@@ -1,10 +1,9 @@
 #pragma once
 
-
 /*! \file prefix.h
 
 Two implementations of a trie prefix.  One is an arbitrary-length
-byte array, and one is specialized for accountid keys.
+byte array, and one is specialized for uint64 keys.
 */
 #include <algorithm>
 #include <atomic>
@@ -14,8 +13,6 @@ byte array, and one is specialized for accountid keys.
 #include <cstdint>
 #include <cstring>
 #include <mutex>
-
-#include <tbb/blocked_range.h> // to get tbb::split
 
 #include "mtt/trie/debug_macros.h"
 
@@ -294,17 +291,6 @@ public:
 		return MAX_LEN_BYTES;
 	}
 
-/*
-	//! memcpy into this prefix from a given buffer.
-	void set_from_raw(const unsigned char* src, size_t len) {
-		auto* dst = reinterpret_cast<unsigned char*>(data.data());
-		if (len > MAX_LEN_BYTES) {
-			throw std::runtime_error("len is too long!");
-		}
-		std::memcpy(dst, src, len); 
-	}
-*/
-
 	constexpr static PrefixLenBits len() {
 		return PrefixLenBits{MAX_LEN_BITS};
 	}
@@ -509,9 +495,6 @@ public:
 	}
 };
 
-
-
-
 template<typename prefix_t>
 static void write_node_header(std::vector<unsigned char>& buf, prefix_t const& prefix, const PrefixLenBits prefix_len_bits) {
 
@@ -520,7 +503,7 @@ static void write_node_header(std::vector<unsigned char>& buf, prefix_t const& p
 	auto prefix_bytes = prefix.get_bytes(prefix_len_bits);
 	buf.insert(buf.end(), prefix_bytes.begin(), prefix_bytes.end());
 }
-
+/*
 [[maybe_unused]]
 static void write_node_header(unsigned char* buf, const unsigned char* prefix, const PrefixLenBits prefix_len, const uint8_t last_byte_mask = 255) {
 	utils::write_unsigned_big_endian(buf, prefix_len.len);
@@ -528,11 +511,11 @@ static void write_node_header(unsigned char* buf, const unsigned char* prefix, c
 	memcpy(buf+2, prefix, num_prefix_bytes);
 	buf[num_prefix_bytes + 1] &= last_byte_mask; // +1 from -1 +2
 }
+*/
 
-
-[[maybe_unused]]
-static int get_header_bytes(const PrefixLenBits prefix_len) {
-	return prefix_len.num_prefix_bytes() + 2;
-}
+//[[maybe_unused]]
+//static int get_header_bytes(const PrefixLenBits prefix_len) {
+//	return prefix_len.num_prefix_bytes() + 2;
+//}
 
 } /* trie */

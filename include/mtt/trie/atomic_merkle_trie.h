@@ -1,8 +1,9 @@
 #pragma once
 
+#include "mtt/common/prefix.h"
+
 #include "mtt/trie/bitvector.h"
 #include "mtt/trie/debug_macros.h"
-#include "mtt/trie/prefix.h"
 #include "mtt/trie/types.h"
 #include "mtt/trie/utils.h"
 

@@ -3,7 +3,8 @@
 #include <utils/log_collector.h>
 #include <utils/debug_utils.h>
 
-#include "mtt/trie/prefix.h"
+#include "mtt/common/prefix.h"
+
 #include "mtt/trie/configs.h"
 
 #include <string>

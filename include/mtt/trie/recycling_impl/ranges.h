@@ -6,9 +6,12 @@ TBB helper objects used for iterating over tries
 
 */
 
-#include "mtt/trie/prefix.h"
+#include "mtt/common/prefix.h"
+
 #include "mtt/trie/recycling_impl/allocator.h"
 #include <utils/threadlocal_cache.h>
+
+#include <tbb/blocked_range.h> // for tbb::split
 
 #include <unordered_map>
 #include <unordered_set>

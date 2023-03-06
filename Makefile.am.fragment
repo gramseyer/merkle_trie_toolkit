@@ -1,0 +1,15 @@
+
+
+mtt_CFLAGS = -I %reldir%/include
+
+mtt_TEST_CFLAGS = -I %reldir%/
+mtt_TEST_CCS = \
+	%reldir%/tests/test_accumulate_values.cc \
+	%reldir%/tests/test_atomic_trie.cc \
+	%reldir%/tests/test_merkle_trie_metadata.cc \
+	%reldir%/tests/test_recycling_trie.cc \
+	%reldir%/tests/test_atomic_merkle_trie.cc \
+	%reldir%/tests/test_merkle_trie.cc \
+	%reldir%/tests/test_prefix.cc \
+	%reldir%/tests/test_serialize.cc
+

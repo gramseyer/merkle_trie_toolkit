@@ -7,7 +7,7 @@
 
 #include "mtt/trie/bitvector.h"
 #include "mtt/trie/debug_macros.h"
-#include "mtt/trie/prefix.h"
+#include "mtt/common/prefix.h"
 #include "mtt/trie/recycling_impl/allocator.h"
 #include "mtt/trie/recycling_impl/ranges.h"
 #include "mtt/trie/recycling_impl/atomic_ranges.h"

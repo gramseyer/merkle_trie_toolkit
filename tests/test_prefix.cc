@@ -3,7 +3,7 @@
 #include <cstdint>
 #include <cstring>
 
-#include "mtt/trie/prefix.h"
+#include "mtt/common/prefix.h"
 
 #include <utils/serialize_endian.h>
 

@@ -7,6 +7,8 @@
 #include <unordered_set>
 #include <vector>
 
+#include <tbb/blocked_range.h>
+
 /*! \file ranges.h 
 A collection of TBB Range objects, useful for 
 iterating over tries for different purposes.

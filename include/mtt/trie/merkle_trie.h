@@ -13,9 +13,10 @@ In this implementation, children pointers are standard 8-byte pointers (i.e.
 virtual addresses).
 */
 
+#include "mtt/common/prefix.h"
+
 #include "mtt/trie/children_map.h"
 #include "mtt/trie/metadata.h"
-#include "mtt/trie/prefix.h"
 #include "mtt/trie/ranges.h"
 #include "mtt/trie/types.h"
 #include "mtt/trie/utils.h"

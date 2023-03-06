@@ -1,12 +1,12 @@
 #pragma once
 
+#include "mtt/common/types.h"
+
 #include <array>
 #include <cstdint>
 
 namespace trie
 {
-
-typedef std::array<uint8_t, 32> Hash;
 
 [[maybe_unused]]
 static
