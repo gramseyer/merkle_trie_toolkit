@@ -4,8 +4,9 @@
 #include <cstdio>
 #include <cstring>
 
-#include "mtt/trie/debug_macros.h"
-#include "mtt/trie/atomic_merkle_trie.h"
+#include "mtt/common/debug_macros.h"
+
+#include "mtt/snapshot_trie/atomic_merkle_trie.h"
 #include "mtt/trie/utils.h"
 #include "mtt/trie/types.h"
 

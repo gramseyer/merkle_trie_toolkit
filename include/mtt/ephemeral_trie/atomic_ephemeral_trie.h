@@ -5,14 +5,17 @@
 #include <cstdint>
 #include <cinttypes>
 
-#include "mtt/trie/bitvector.h"
-#include "mtt/trie/debug_macros.h"
+#include "mtt/common/bitvector.h"
 #include "mtt/common/prefix.h"
-#include "mtt/trie/recycling_impl/allocator.h"
+#include "mtt/common/types.h"
+#include "mtt/common/debug_macros.h"
+#include "mtt/common/insert_fn.h"
+#include "mtt/common/utils.h"
+
+#include "mtt/ephemeral_trie/allocator.h"
+
 #include "mtt/trie/recycling_impl/ranges.h"
-#include "mtt/trie/recycling_impl/atomic_ranges.h"
-#include "mtt/trie/types.h"
-#include "mtt/trie/utils.h"
+#include "mtt/ephemeral_trie/ranges.h"
 
 #include <utils/non_movable.h>
 
@@ -79,18 +82,18 @@ class AtomicChildrenMap : private utils::NonMovableOrCopyable
     }
 };
 
-template<typename ValueType, typename PrefixT>
+template<typename ValueType, typename PrefixT, uint8_t LOG_BUFSIZE>
 class AtomicTrie;
 
-template<typename ValueType, typename PrefixT>
+template<typename ValueType, typename PrefixT, uint8_t LOG_BUFSIZE>
 class alignas(64) AtomicTrieNode : private utils::NonMovableOrCopyable
 {
 
   public:
     using prefix_t = PrefixT;
-    using node_t = AtomicTrieNode<ValueType, prefix_t>;
-    using allocation_context_t = AllocationContext<node_t>;
-    using allocator_t = RecyclingTrieNodeAllocator<node_t>;
+    using node_t = AtomicTrieNode<ValueType, prefix_t, LOG_BUFSIZE>;
+    using allocator_t = EphemeralTrieNodeAllocator<node_t, ValueType, LOG_BUFSIZE>;
+    using allocation_context_t = allocator_t::context_t;
     using value_t = ValueType;
     using ptr_t = uint32_t;
 
@@ -269,8 +272,9 @@ class alignas(64) AtomicTrieNode : private utils::NonMovableOrCopyable
                                             size_t vector_offset,
                                             const allocator_t& allocator) const;
 
-    // TESTING
+    const value_t* get_value(const prefix_t& query_prefix, allocator_t const& allocator) const;
 
+    // TESTING
     uint32_t deep_sizecheck(allocator_t const& allocator) const
     {
         if (prefix_len == MAX_KEY_LEN_BITS) {
@@ -302,42 +306,16 @@ class alignas(64) AtomicTrieNode : private utils::NonMovableOrCopyable
         }
         return total_size;
     }
-
-    const value_t* get_value(const prefix_t& query_prefix, allocator_t const& allocator) const
-    {
-        auto match_len = get_prefix_match_len(query_prefix);
-        if (match_len < prefix_len) {
-            return nullptr;
-        }
-        //match_len == prefix_len
-
-        if (match_len == MAX_KEY_LEN_BITS)
-        {
-            return &allocator.get_value(value_pointer);
-        }
-
-        auto bb = query_prefix.get_branch_bits(match_len);
-
-        uint32_t relevant_child = (children.get(bb) >> 32);
-
-        if (relevant_child == UINT32_MAX)
-        {
-            return nullptr;
-        }
-
-        return allocator.get_object(relevant_child).get_value(query_prefix, allocator);
-
-    }
 };
 
-template<typename ValueType, typename PrefixT>
+template<typename ValueType, typename PrefixT, uint8_t LOG_BUFSIZE = 19>
 class AtomicTrie
 {
   public:
     using prefix_t = PrefixT;
-    using node_t = AtomicTrieNode<ValueType, prefix_t>;
-    using allocation_context_t = AllocationContext<node_t>;
-    using allocator_t = RecyclingTrieNodeAllocator<node_t>;
+    using node_t = AtomicTrieNode<ValueType, prefix_t, LOG_BUFSIZE>;
+    using allocator_t = node_t::allocator_t;//EphemeralTrieNodeAllocator<node_t, LOG_BUFSIZE>;
+    using allocation_context_t = allocator_t::context_t;
     using value_t = ValueType;
 
   private:
@@ -390,7 +368,7 @@ class AtomicTrie
 
     Hash hash()
     {
-        tbb::parallel_for(RecyclingHashRange<node_t>(&root, allocator),
+        tbb::parallel_for(EphemeralTrieHashRange<node_t>(&root, allocator),
           [this](const auto& r) {
               std::vector<uint8_t> digest_buffer;
               for (size_t i = 0; i < r.num_nodes(); i++) {
@@ -405,7 +383,7 @@ class AtomicTrie
     template<typename ValueModifyFn>
     void parallel_batch_value_modify_const(ValueModifyFn& fn, uint32_t GRAIN_SIZE) const
     {
-        AtomicRecyclingApplyRange<node_t> range(&root, allocator, GRAIN_SIZE);
+        EphemeralTrieApplyRange<node_t> range(&root, allocator, GRAIN_SIZE);
         // guaranteed that range.work_list contains no overlaps
 
         tbb::parallel_for(range, [&fn, this](const auto& range) {
@@ -413,7 +391,7 @@ class AtomicTrie
 
                 auto const* ptr = &allocator.get_object(range.work_list[i] >> 32);
 
-                ConstApplyableSubnodeRef ref{ ptr, allocator };
+                ConstApplyableNodeReference ref{ ptr, allocator };
                 fn(ref);
             }
         });
@@ -422,7 +400,7 @@ class AtomicTrie
     template<typename ValueModifyFn>
     void parallel_batch_value_modify(ValueModifyFn& fn, uint32_t GRAIN_SIZE)
     {
-        AtomicRecyclingApplyRange<node_t> range(&root, allocator, GRAIN_SIZE);
+        EphemeralTrieApplyRange<node_t> range(&root, allocator, GRAIN_SIZE);
         // guaranteed that range.work_list contains no overlaps
 
         tbb::parallel_for(range, [&fn, this](const auto& range) {
@@ -430,7 +408,7 @@ class AtomicTrie
 
                 auto* ptr = &allocator.get_object(range.work_list[i] >> 32);
 
-                ApplyableSubnodeRef ref{ ptr, allocator };
+                ApplyableNodeReference ref{ ptr, allocator };
                 fn(ref);
             }
         });
@@ -439,7 +417,7 @@ class AtomicTrie
     template<typename VectorType, auto get_fn>
     void accumulate_values_parallel(VectorType& out, uint32_t GRAIN_SIZE) const
     {
-        AtomicRecyclingAccumulateValuesRange<node_t> range(root.children_and_sizes_list(), allocator, GRAIN_SIZE);
+        EphemeralTrieAccumulateValuesRange<node_t> range(root.children_and_sizes_list(), allocator, GRAIN_SIZE);
 
         out.resize(size());
 
@@ -481,24 +459,29 @@ class AtomicTrie
     }
 };
 
-template<typename ValueType, typename prefix_t>
+template<typename main_trie_t> //typename ValueType, typename prefix_t, uint8_t LOG_BUFSIZE>
 class AtomicTrieReference : public utils::NonMovableOrCopyable
 {
-    using node_t = AtomicTrieNode<ValueType, prefix_t>;
-    using allocation_context_t = AllocationContext<node_t>;
+    using node_t = main_trie_t::node_t;//AtomicTrieNode<ValueType, prefix_t, LOG_BUFSIZE>;
+    using allocation_context_t = node_t::allocation_context_t;
 
-    AtomicTrie<ValueType, prefix_t>& main_trie;
+    using value_t = node_t::value_t;
+    using prefix_t = node_t::prefix_t;
+
+    main_trie_t& main_trie;
+
+    //AtomicTrie<ValueType, prefix_t, LOG_BUFSIZE>& main_trie;
     allocation_context_t alloc;
 
 public:
 
-    AtomicTrieReference(AtomicTrie<ValueType, prefix_t>& main_trie)
+    AtomicTrieReference(main_trie_t& main_trie) //AtomicTrie<ValueType, prefix_t, LOG_BUFSIZE>& main_trie)
         : main_trie(main_trie)
         , alloc(main_trie.get_new_allocation_context())
         {}
 
-    template<typename InsertFn = OverwriteInsertFn<ValueType>,
-             typename InsertedValueType = ValueType>
+    template<typename InsertFn = OverwriteInsertFn<value_t>,
+             typename InsertedValueType = value_t>
     void insert(prefix_t const& new_prefix,
                 InsertedValueType&& value)
     {
@@ -511,8 +494,8 @@ public:
     }
 };
 
-#define ATN_TEMPLATE template<typename ValueType, typename PrefixT>
-#define ATN_DECL AtomicTrieNode<ValueType, PrefixT>
+#define ATN_TEMPLATE template<typename ValueType, typename PrefixT, uint8_t LOG_BUFSIZE>
+#define ATN_DECL AtomicTrieNode<ValueType, PrefixT, LOG_BUFSIZE>
 
 ATN_TEMPLATE
 template<typename InsertFn, typename InsertedValue>
@@ -775,6 +758,34 @@ ATN_DECL :: compute_hash(allocator_t& allocator, std::vector<uint8_t>& digest_bu
         throw std::runtime_error("error from crypto_generichash");
     }
     hash_valid = true;
+}
+
+ATN_TEMPLATE
+const 
+ATN_DECL::value_t*
+ATN_DECL::get_value(const prefix_t& query_prefix, allocator_t const& allocator) const
+{
+    auto match_len = get_prefix_match_len(query_prefix);
+    if (match_len < prefix_len) {
+        return nullptr;
+    }
+    //match_len == prefix_len
+
+    if (match_len == MAX_KEY_LEN_BITS)
+    {
+        return &allocator.get_value(value_pointer);
+    }
+
+    auto bb = query_prefix.get_branch_bits(match_len);
+
+    uint32_t relevant_child = (children.get(bb) >> 32);
+
+    if (relevant_child == UINT32_MAX)
+    {
+        return nullptr;
+    }
+
+    return allocator.get_object(relevant_child).get_value(query_prefix, allocator);
 }
 
 #undef ATN_DECL

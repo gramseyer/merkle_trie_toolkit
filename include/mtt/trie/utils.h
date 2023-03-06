@@ -6,6 +6,10 @@
 #include <variant>
 #include <vector>
 
+#include "mtt/common/utils.h"
+
+#include "mtt/common/insert_fn.h"
+
 /*! \file utils.h 
 
 Miscellaneous classes used in trie management.
@@ -13,11 +17,6 @@ Miscellaneous classes used in trie management.
 */
 
 namespace trie {
-
-struct EmptyValue {
-
-	constexpr static void copy_data(std::vector<uint8_t>& buf) {}
-};
 
 template<typename T>
 static 
@@ -108,21 +107,6 @@ struct IndexedMetadata {
 			metadata (metadata) {}
 };
 
-//! Base functions for inserting values into a trie.  
-//! Override to do nondefault things when inserting new values.
-template<typename ValueType>
-struct GenericInsertFn {
-	template<typename MetadataType>
-	static MetadataType new_metadata(const ValueType& value) {
-		return MetadataType(value);
-	}
-
-	template<typename prefix_t>
-	static ValueType new_value(const prefix_t& prefix) {
-		return ValueType{};
-	}
-};
-
 struct NoDuplicateKeysMergeFn
 {
 	template<typename ValueType>
@@ -168,28 +152,6 @@ struct OverwriteMergeFn {
 
 		other_metadata_loaded -= original_main_metadata;
 		return other_metadata_loaded;
-	}
-};
-
-//can call unsafe methods bc excl locks on metadata inputs in caller
-//! Overwrite previous value when inserting new value into a trie.
-template<typename ValueType>
-struct OverwriteInsertFn : public GenericInsertFn<ValueType> {
-
-	static void 
-	value_insert(ValueType& main_value, ValueType&& other_value) {
-		main_value = std::move(other_value);
-	}
-
-	template<typename AtomicMetadataType>
-	static typename AtomicMetadataType::BaseT 
-	metadata_insert(AtomicMetadataType& original_metadata, const ValueType& new_value) {
-
-		//return other - main, set main <- delta
-		auto new_metadata = typename AtomicMetadataType::BaseT(new_value);
-		auto metadata_delta = new_metadata;
-		metadata_delta -= original_metadata.unsafe_substitute(new_metadata);
-		return metadata_delta;
 	}
 };
 

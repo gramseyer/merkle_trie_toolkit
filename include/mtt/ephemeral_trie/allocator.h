@@ -6,49 +6,50 @@
 
 namespace trie {
 
-struct RecyclingTrieAllocatorConstants
+template<uint8_t OFFSET_BITS>
+struct EphemeralTrieNodeAllocatorConstants
 {
-    constexpr static size_t BUF_SIZE = 500'000;
+    constexpr static uint8_t BUFFER_ID_BITS = 32 - OFFSET_BITS;
 
-    constexpr static uint8_t BUFFER_ID_BITS = 12;
-    constexpr static uint8_t OFFSET_BITS = 20;
+    // 2^19 = 524'288
+    constexpr static size_t BUF_SIZE = static_cast<uint32_t>(1) << OFFSET_BITS;
 
     constexpr static uint32_t NUM_BUFFERS = static_cast<uint32_t>(1) << BUFFER_ID_BITS;
 
     constexpr static uint32_t OFFSET_MASK
-        = (((uint32_t)1) << (OFFSET_BITS)) - 1;
+        = (static_cast<uint32_t>(1) << (OFFSET_BITS)) - 1;
 
     static_assert(BUFFER_ID_BITS + OFFSET_BITS == 32, "ptrs are size 32 bits");
 
-    RecyclingTrieAllocatorConstants() = delete;
+    EphemeralTrieNodeAllocatorConstants() = delete;
 };
 
-template<typename ObjType>
-struct RecyclingTrieNodeAllocator;
+template<typename ObjType, typename ValueType, uint8_t LOG_BUFSIZE>
+struct EphemeralTrieNodeAllocator;
 
 /*! Singlethreaded node/value allocator.
 When it runs out, it asks the main node allocator for another working buffer.
 Allocations are never recycled, until the main node allocator is cleared
 (after which a context should not be used until reset)
 */
-template<typename ObjType>
-class AllocationContext : private utils::NonMovableOrCopyable
+template<typename ObjType, typename ValueType, uint8_t LOG_BUFSIZE>
+class EphemeralTrieNodeAllocationContext : private utils::NonMovableOrCopyable
 {
     uint32_t cur_buffer_offset_and_index = UINT32_MAX;
     uint32_t value_buffer_offset_and_index = UINT32_MAX;
 
-    using allocator_t = RecyclingTrieNodeAllocator<ObjType>;
+    using allocator_t = EphemeralTrieNodeAllocator<ObjType, ValueType, LOG_BUFSIZE>;
 
     allocator_t& allocator;
 
     constexpr static size_t BUF_SIZE
-        = RecyclingTrieAllocatorConstants::BUF_SIZE;
-    constexpr static uint8_t OFFSET_BITS
-        = RecyclingTrieAllocatorConstants::OFFSET_BITS;
+        = EphemeralTrieNodeAllocatorConstants<LOG_BUFSIZE>::BUF_SIZE;
+   // constexpr static uint8_t OFFSET_BITS
+     //   = EphemeralTrieNodeAllocatorConstants<LOG_BUFSIZE>::OFFSET_BITS;
     constexpr static uint32_t OFFSET_MASK
-        = RecyclingTrieAllocatorConstants::OFFSET_MASK;
+        = EphemeralTrieNodeAllocatorConstants<LOG_BUFSIZE>::OFFSET_MASK;
 
-    using value_t = typename ObjType::value_t;
+    using value_t = ValueType;//typename allocator_t::value_t;
 
     static bool overflow_check(uint32_t offset_and_index, uint8_t new_allocs)
     {
@@ -56,7 +57,8 @@ class AllocationContext : private utils::NonMovableOrCopyable
     }
 
   public:
-    AllocationContext(uint32_t cur_buffer_offset_and_index,
+    EphemeralTrieNodeAllocationContext(
+            uint32_t cur_buffer_offset_and_index,
                       uint32_t value_buffer_offset_and_index,
                       allocator_t& allocator)
         : cur_buffer_offset_and_index(cur_buffer_offset_and_index)
@@ -124,21 +126,23 @@ After resetting, created contexts should be nullified.
 
 This struct is threadsafe.
 */
-template<typename ObjType>
-struct RecyclingTrieNodeAllocator : private utils::NonMovableOrCopyable
+template<typename ObjType, typename ValueType, uint8_t LOG_BUFSIZE>
+struct EphemeralTrieNodeAllocator : private utils::NonMovableOrCopyable
 {
     constexpr static size_t BUF_SIZE
-        = RecyclingTrieAllocatorConstants::BUF_SIZE;
-    constexpr static uint8_t OFFSET_BITS
-        = RecyclingTrieAllocatorConstants::OFFSET_BITS;
+        = EphemeralTrieNodeAllocatorConstants<LOG_BUFSIZE>::BUF_SIZE;
+    //constexpr static uint8_t OFFSET_BITS
+    //    = EphemeralTrieNodeAllocatorConstants<LOG_BUFSIZE>::OFFSET_BITS;
     constexpr static uint32_t OFFSET_MASK
-        = RecyclingTrieAllocatorConstants::OFFSET_MASK;
+        = EphemeralTrieNodeAllocatorConstants<LOG_BUFSIZE>::OFFSET_MASK;
 
     using buffer_t = std::array<ObjType, BUF_SIZE>;
 
-    using value_t = typename ObjType::value_t;
+    using value_t = ValueType;//typename ObjType::value_t;
 
     using value_buffer_t = std::array<value_t, BUF_SIZE>;
+
+    using context_t = EphemeralTrieNodeAllocationContext<ObjType, value_t, LOG_BUFSIZE>;
 
   private:
     std::atomic<uint32_t> next_available_buffer = 0;
@@ -146,13 +150,11 @@ struct RecyclingTrieNodeAllocator : private utils::NonMovableOrCopyable
 
     using buffer_ptr_t = std::unique_ptr<buffer_t>;
 
-    std::array<buffer_ptr_t,RecyclingTrieAllocatorConstants::NUM_BUFFERS> buffers;
+    std::array<buffer_ptr_t, EphemeralTrieNodeAllocatorConstants<LOG_BUFSIZE>::NUM_BUFFERS> buffers;
 
     using value_buffer_ptr_t = std::unique_ptr<value_buffer_t>;
 
-    std::array<value_buffer_ptr_t, RecyclingTrieAllocatorConstants::NUM_BUFFERS> value_buffers;
-
-    using context_t = AllocationContext<ObjType>;
+    std::array<value_buffer_ptr_t, EphemeralTrieNodeAllocatorConstants<LOG_BUFSIZE>::NUM_BUFFERS> value_buffers;
 
   public:
     //! Get a new allocation context
@@ -179,8 +181,8 @@ struct RecyclingTrieNodeAllocator : private utils::NonMovableOrCopyable
                 = std::make_unique<value_buffer_t>();
         }
 
-        return context_t(static_cast<uint32_t>(idx) << OFFSET_BITS,
-                         static_cast<uint32_t>(value_buffer_idx) << OFFSET_BITS,
+        return context_t(static_cast<uint32_t>(idx) << LOG_BUFSIZE,
+                         static_cast<uint32_t>(value_buffer_idx) << LOG_BUFSIZE,
                          *this);
     }
 
@@ -197,7 +199,7 @@ struct RecyclingTrieNodeAllocator : private utils::NonMovableOrCopyable
             buffers[idx] = std::make_unique<buffer_t>();
         }
 
-        context.set_cur_buffer_offset_and_index(static_cast<uint32_t>(idx) << OFFSET_BITS);
+        context.set_cur_buffer_offset_and_index(static_cast<uint32_t>(idx) << LOG_BUFSIZE);
     }
 
     //! Give a context a new trie value buffer
@@ -215,13 +217,13 @@ struct RecyclingTrieNodeAllocator : private utils::NonMovableOrCopyable
         }
 
         context.set_cur_value_buffer_offset_and_index(
-            static_cast<uint32_t>(value_buffer_idx) << OFFSET_BITS);
+            static_cast<uint32_t>(value_buffer_idx) << LOG_BUFSIZE);
     }
 
     //! Access a particular node, given a handle
     ObjType& get_object(uint32_t ptr) const
     {
-        uint32_t idx = ptr >> OFFSET_BITS;
+        uint32_t idx = ptr >> LOG_BUFSIZE;
         uint32_t offset = ptr & OFFSET_MASK;
         return (*buffers[idx])[offset];
     }
@@ -229,7 +231,7 @@ struct RecyclingTrieNodeAllocator : private utils::NonMovableOrCopyable
     //! Access a particular trie value, given a handle
     value_t& get_value(uint32_t value_ptr) const
     {
-        uint32_t idx = value_ptr >> OFFSET_BITS;
+        uint32_t idx = value_ptr >> LOG_BUFSIZE;
         uint32_t offset = value_ptr & OFFSET_MASK;
 
         return (*value_buffers[idx])[offset];
@@ -243,11 +245,13 @@ struct RecyclingTrieNodeAllocator : private utils::NonMovableOrCopyable
     }
 };
 
-template<typename ValueType>
-struct ApplyableSubnodeRef
+template<typename allocator_t>
+struct ApplyableNodeReference
 {
+    using ValueType = allocator_t::value_t;
+
     ValueType* ptr;
-    RecyclingTrieNodeAllocator<ValueType>& allocator;
+    allocator_t& allocator;
 
     template<typename ApplyFn>
     void apply(ApplyFn& fn, auto&&... args)
@@ -281,11 +285,13 @@ struct ApplyableSubnodeRef
     }
 };
 
-template<typename ValueType>
-struct ConstApplyableSubnodeRef
+template<typename allocator_t>
+struct ConstApplyableNodeReference
 {
+    using ValueType = allocator_t::value_t;
+
     const ValueType* ptr;
-    const RecyclingTrieNodeAllocator<ValueType>& allocator;
+    const allocator_t& allocator;
 
     template<typename ApplyFn>
     void apply(ApplyFn& fn, auto&&... args) const

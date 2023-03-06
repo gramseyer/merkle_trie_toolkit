@@ -2,9 +2,11 @@
 
 #include <cstdint>
 
-#include "mtt/trie/bitvector.h"
-#include "mtt/trie/debug_macros.h"
-#include "mtt/trie/recycling_impl/allocator.h"
+#include "mtt/common/bitvector.h"
+#include "mtt/common/debug_macros.h"
+
+#include "mtt/ephemeral_trie/allocator.h"
+
 #include "mtt/trie/utils.h"
 
 namespace trie {
@@ -33,7 +35,6 @@ class RecyclingChildrenMap
     using bv_t = TrieBitVector;
 
   private:
-    using allocator_t = AllocationContext<NodeT>;
 
     struct ChildrenPtrs
     {
@@ -46,7 +47,8 @@ class RecyclingChildrenMap
             , bv(0)
         {}
 
-        void allocate(allocator_t& allocator)
+        template<typename allocator_or_context_t>
+        void allocate(allocator_or_context_t& allocator)
         {
             base_ptr_offset = allocator.allocate(NUM_CHILDREN);
             bv.clear();
@@ -61,7 +63,8 @@ class RecyclingChildrenMap
             return *this;
         }
 
-        void set_child(uint8_t branch_bits, ptr_t ptr, allocator_t& allocator)
+        template<typename allocator_or_context_t>
+        void set_child(uint8_t branch_bits, ptr_t ptr, allocator_or_context_t& allocator)
         {
             auto child_ptr = base_ptr_offset + branch_bits;
             auto& child = allocator.get_object(child_ptr);
@@ -70,7 +73,8 @@ class RecyclingChildrenMap
             bv.add(branch_bits);
         }
 
-        NodeT& init_new_child(uint8_t branch_bits, allocator_t& allocator)
+        template<typename allocator_or_context_t>
+        NodeT& init_new_child(uint8_t branch_bits, allocator_or_context_t& allocator)
         {
             auto child_ptr = base_ptr_offset + branch_bits;
             bv.add(branch_bits);
@@ -167,7 +171,8 @@ class RecyclingChildrenMap
                     offsetof(this_t, tag) + sizeof(tag));
     }
 
-    void set_value(allocator_t& allocator, ValueType&& value_input)
+    template<typename allocator_or_context_t>
+    void set_value(allocator_or_context_t& allocator, ValueType&& value_input)
     {
         stolen_guard("set_value");
         if (tag != VALUE) {
@@ -201,9 +206,11 @@ class RecyclingChildrenMap
         }
     }
 
-    void reset_map(allocator_t& allocator) { set_map(allocator); }
+    template<typename allocator_or_context_t>
+    void reset_map(allocator_or_context_t& allocator) { set_map(allocator); }
 
-    void set_map(allocator_t& allocator)
+    template<typename allocator_or_context_t>
+    void set_map(allocator_or_context_t& allocator)
     {
         set_map_noalloc();
         children.allocate(allocator);
@@ -335,12 +342,14 @@ class RecyclingChildrenMap
     using iterator = iterator_<false>;
     using const_iterator = iterator_<true>;
 
-    void emplace(uint8_t branch_bits, ptr_t ptr, allocator_t& allocator)
+    template<typename allocator_or_context_t>
+    void emplace(uint8_t branch_bits, ptr_t ptr, allocator_or_context_t& allocator)
     {
         children.set_child(branch_bits, ptr, allocator);
     }
 
-    NodeT& init_new_child(uint8_t branch_bits, allocator_t& allocator)
+    template<typename allocator_or_context_t>
+    NodeT& init_new_child(uint8_t branch_bits, allocator_or_context_t& allocator)
     {
         map_guard();
         return children.init_new_child(branch_bits, allocator);

@@ -17,10 +17,12 @@
 #include "mtt/trie/configs.h"
 #include "mtt/trie/hash_log.h"
 
-#include "mtt/trie/recycling_impl/allocator.h"
 #include "mtt/trie/recycling_impl/children_map.h"
 #include "mtt/trie/recycling_impl/metadata.h"
 #include "mtt/trie/recycling_impl/ranges.h"
+
+#include "mtt/ephemeral_trie/allocator.h"
+#include "mtt/ephemeral_trie/ranges.h"
 
 #include <utils/non_movable.h>
 #include <utils/serialize_endian.h>
@@ -75,10 +77,10 @@ class alignas(64) RecyclingTrieNode : private utils::NonMovableOrCopyable
     using children_map_t = RecyclingChildrenMap<ValueType, node_t>;
     using ptr_t = children_map_t::ptr_t;
     using hash_t = Hash;
-    using allocation_context_t = AllocationContext<node_t>;
+    using allocator_t = EphemeralTrieNodeAllocator<node_t, ValueType, 19>;
+    using allocation_context_t = allocator_t::context_t;// EphemeralTrieNodeAllocationContext<node_t, 19>; //
     using metadata_t = RecyclingTrieNodeMetadata<ExtraMetadata>;
     using contents_t = TrieNodeContents<ValueType, node_t, metadata_t>;
-    using allocator_t = RecyclingTrieNodeAllocator<node_t>;
     using value_t = ValueType;
     using main_trie_t = RecyclingTrie<ValueType, PrefixT, ExtraMetadata>;
 
@@ -555,7 +557,10 @@ template<typename ValueType, typename PrefixT, typename ExtraMetadata>
 class SerialRecyclingTrie
 {
     using node_t = RecyclingTrieNode<ValueType, PrefixT, ExtraMetadata>;
-    AllocationContext<node_t> allocation_context;
+    using allocator_t = node_t::allocator_t;
+    using allocation_context_t = node_t::allocation_context_t;
+
+    allocation_context_t allocation_context;
     using ptr_t = node_t::ptr_t;
     ptr_t root;
 
@@ -568,7 +573,7 @@ class SerialRecyclingTrie
     detail::node_size_warning<node_size_limit> _limit;
 
   public:
-    SerialRecyclingTrie(RecyclingTrieNodeAllocator<node_t>& allocator)
+    SerialRecyclingTrie(allocator_t& allocator)
         : allocation_context(allocator.get_new_allocator())
         , root(UINT32_MAX)
     {
@@ -614,10 +619,12 @@ class SerialRecyclingTrie
         std::printf("sizeof: %lu\n", sizeof(node_t));
     }
 
-    AllocationContext<node_t>& get_allocation_context()
+    allocation_context_t& get_allocation_context()
     {
         return allocation_context;
     }
+
+    // TESTING
 
     void test_metadata_integrity_check() const
     {
@@ -647,11 +654,13 @@ class RecyclingTrie
     using metadata_t = RecyclingTrieNodeMetadata<ExtraMetadata>;
 
   private:
-    RecyclingTrieNodeAllocator<node_t> allocator;
+    using allocator_t = node_t::allocator_t;
+
+    allocator_t allocator;//RecyclingTrieNodeAllocator<node_t> allocator;
 
     friend serial_trie_t; // class SerialRecyclingTrie<ValueType>;
 
-    RecyclingTrieNodeAllocator<node_t>& get_allocator() { return allocator; }
+    allocator_t& get_allocator() { return allocator; }
 
     ptr_t root = UINT32_MAX; // null
 
@@ -790,7 +799,7 @@ class RecyclingTrie
     template<typename ValueModifyFn>
     void parallel_apply(ValueModifyFn const& fn)
     {
-        auto apply_lambda = [&fn](ApplyableSubnodeRef<node_t>& work_root) {
+        auto apply_lambda = [&fn](ApplyableNodeReference<node_t>& work_root) {
             work_root.apply(fn);
         };
         parallel_batch_value_modify(apply_lambda);
@@ -811,7 +820,7 @@ class RecyclingTrie
 
         tbb::parallel_for(range, [&fn, this](const auto& range) {
             for (unsigned int i = 0; i < range.work_list.size(); i++) {
-                ApplyableSubnodeRef ref{ range.work_list[i], allocator };
+                ApplyableNodeReference ref{ range.work_list[i], allocator };
                 fn(ref);
             }
         });
@@ -831,7 +840,7 @@ class RecyclingTrie
 
         tbb::parallel_for(range, [&fn, this](const auto& range) {
             for (unsigned int i = 0; i < range.work_list.size(); i++) {
-                ConstApplyableSubnodeRef ref{ range.work_list[i], allocator };
+                ConstApplyableNodeReference ref{ range.work_list[i], allocator };
                 fn(ref);
             }
         });
@@ -852,7 +861,7 @@ class RecyclingTrie
             // for (auto work : range)
             for (auto it = range.begin(); it != range.end(); it++) {
                 // for (unsigned int i = 0; i < range.work_list.size(); i++) {
-                ApplyableSubnodeRef ref{ it.get_node_id(), allocator };
+                ApplyableNodeReference ref{ it.get_node_id(), allocator };
                 fn(ref, it.get_config());
             }
         });
@@ -1074,7 +1083,7 @@ template<typename Map,
          typename... ApplyToValueBeforeHashFn>
 static void
 compute_hash_branch_node_v2(Hash& hash_buf,
-                            const prefix_t prefix,
+                            const prefix_t& prefix,
                             const PrefixLenBits prefix_len,
                             const Map& children,
                             const allocator_t& allocator,
@@ -1395,7 +1404,7 @@ RecyclingTrie_DECL::hash(Hash& output_hash, std::optional<HashLog<prefix_t>>& lo
 
         // It seems to perform substantially faster to just allocate a vector on
         // the stack, rather than fetching a vector from a threadlocal cache.
-        tbb::parallel_for(RecyclingHashRange<node_t>(&allocator.get_object(root), allocator),
+        tbb::parallel_for(EphemeralTrieHashRange<node_t>(&allocator.get_object(root), allocator),
                           [this, &log](const auto& r) {
                               std::vector<unsigned char> digest_buffer;
                               digest_buffer.reserve(default_digest_buffer_sz);

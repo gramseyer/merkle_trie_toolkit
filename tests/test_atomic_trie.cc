@@ -4,9 +4,10 @@
 #include <cstdio>
 #include <cstring>
 
-#include "mtt/trie/debug_macros.h"
-#include "mtt/trie/recycling_impl/atomic_trie.h"
-#include "mtt/trie/utils.h"
+#include "mtt/common/debug_macros.h"
+#include "mtt/ephemeral_trie/atomic_ephemeral_trie.h"
+
+#include "mtt/common/utils.h"
 #include "mtt/trie/types.h"
 
 #include <utils/serialize_endian.h>
@@ -47,11 +48,13 @@ TEST_CASE("atomic trie emptyvalue small", "[atomic]")
 
 TEST_CASE("parallel atomic trie insert", "[atomic]")
 {
-	using cache_t = utils::ThreadlocalCache<AtomicTrieReference<EmptyValue, UInt64Prefix>>;
+
+	using trie_t = AtomicTrie<EmptyValue, UInt64Prefix>;
+	using cache_t = utils::ThreadlocalCache<AtomicTrieReference<trie_t>>;
 
 	cache_t cache;
 
-	AtomicTrie<EmptyValue, UInt64Prefix> trie;
+	trie_t trie;
 
 	tbb::parallel_for(
 		tbb::blocked_range<uint64_t>(0, 1000000),

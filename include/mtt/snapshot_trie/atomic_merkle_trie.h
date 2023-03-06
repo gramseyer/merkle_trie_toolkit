@@ -1,11 +1,12 @@
 #pragma once
 
 #include "mtt/common/prefix.h"
+#include "mtt/common/types.h"
 
-#include "mtt/trie/bitvector.h"
-#include "mtt/trie/debug_macros.h"
-#include "mtt/trie/types.h"
-#include "mtt/trie/utils.h"
+#include "mtt/common/bitvector.h"
+#include "mtt/common/debug_macros.h"
+#include "mtt/common/insert_fn.h"
+#include "mtt/common/utils.h"
 
 #include <array>
 #include <atomic>
@@ -17,7 +18,6 @@
 
 namespace trie
 {
-
 
 template<typename prefix_t, typename value_t, uint32_t TLCACHE_SIZE>
 class AtomicMerkleTrieNode;

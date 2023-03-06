@@ -10,7 +10,7 @@ A set of debugging macros.  Activate/deactivate based on DEBUG_LEVEL_* settings.
 Printouts include file/line information.
 */
 
-#include "mtt/trie/debug_levels.h"
+#include "mtt/common/debug_levels.h"
 
 #define TRIE_LOG(s, ...) std::printf((std::string("%-45s") + s + "\n").c_str(), (std::string(__FILE__) + "." + std::to_string(__LINE__) + ":").c_str() __VA_OPT__(,) __VA_ARGS__)
 #define TRIE_LOG_FILE(o, s, ...) std::fprintf(o, (std::string("%-45s") + s + "\n").c_str(), (std::string(__FILE__) + "." + std::to_string(__LINE__) + ":").c_str() __VA_OPT__(,) __VA_ARGS__)
@@ -47,6 +47,7 @@ Printouts include file/line information.
 #define PROOF_INFO_F(s) (void)0
 #endif
 
+/*
 namespace trie {
 namespace detail {
 //! Convert a byte array to a hex string.
@@ -67,8 +68,10 @@ array_to_str(const ArrayLike& array)
 	return array_to_str(array.data(), array.size());
 }
 
-} /* namespace detail */
-} /* namespace trie */
+} //namespace detail 
+
+} // namespace trie
+*/
 
 
 

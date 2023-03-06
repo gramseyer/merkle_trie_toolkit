@@ -8,7 +8,7 @@ This implementation stores a literal list of pointers.
 
 */
 
-#include "mtt/trie/bitvector.h"
+#include "mtt/common/bitvector.h"
 
 #include <cstddef>
 #include <cstdint>

@@ -8,7 +8,7 @@ TBB helper objects used for iterating over tries
 
 #include "mtt/common/prefix.h"
 
-#include "mtt/trie/recycling_impl/allocator.h"
+#include "mtt/ephemeral_trie/allocator.h"
 #include <utils/threadlocal_cache.h>
 
 #include <tbb/blocked_range.h> // for tbb::split
@@ -18,79 +18,6 @@ TBB helper objects used for iterating over tries
 #include <vector>
 
 namespace trie {
-
-//! TBB iterator range used when hashing a trie.
-template<typename TrieT>
-class RecyclingHashRange
-{
-
-    uint32_t num_children;
-    using allocator_t = RecyclingTrieNodeAllocator<TrieT>;
-    //using ptr_t = TrieT::ptr_t;
-
-    allocator_t& allocator;
-
-  public:
-    //! Nodes for which this range is responsible for hashing.
-    std::vector<TrieT*> nodes;
-
-    //! TBB: is this range worth executing
-    bool empty() const { return num_children == 0; }
-
-    //! TBB: can this range be divided
-    bool is_divisible() const { return num_children > 1000; }
-
-    //! Number of nodes for which this range is responsible.
-    size_t num_nodes() const { return nodes.size(); }
-
-    //! Get an actual reference on a node to be hashed.
-    TrieT& operator[](size_t idx) const
-    {
-        return *nodes[idx];//allocator.get_object(nodes[idx]);
-    }
-
-    //! Construct a default range (for the whole trie)
-    //! from the trie root.
-    RecyclingHashRange(TrieT* root, allocator_t& allocator)
-        : num_children(0)
-        , allocator(allocator)
-        , nodes()
-    {
-        nodes.push_back(root);
-        num_children = root -> size();
-    };
-
-    //! TBB: splitting constructor.
-    RecyclingHashRange(RecyclingHashRange& other, tbb::split)
-        : num_children(0)
-        , allocator(other.allocator)
-        , nodes()
-    {
-        auto original_sz = other.num_children;
-        while (num_children < original_sz / 2) {
-            if (other.nodes.size() == 1) {
-                auto ptrs = other.nodes[0] -> children_list();
-                other.nodes.clear();
-                for (auto ptr : ptrs)
-                {
-                    other.nodes.push_back(&allocator.get_object(ptr));
-                }
-               // other.nodes
-                //    = allocator.get_object(other.nodes[0]).children_list();
-            }
-            if (other.nodes.size() == 0) {
-                std::printf("other.nodes.size() = 0!");
-                return;
-            }
-
-            nodes.push_back(other.nodes[0]);
-            other.nodes.erase(other.nodes.begin());
-            auto sz = nodes.back() -> size(); //allocator.get_object(nodes.back()).size();
-            num_children += sz;
-            other.num_children -= sz;
-        }
-    }
-};
 
 //! TBB range when accumulating a list of the values in the trie.
 template<typename TrieT, typename AccumulatorFn, unsigned int GRAIN_SIZE = 1000>
@@ -247,7 +174,7 @@ struct RecyclingBatchMergeRange
 {
     using ptr_t = TrieT::ptr_t;
     using map_value_t = std::vector<ptr_t>;
-    using allocator_t = RecyclingTrieNodeAllocator<TrieT>;
+    using allocator_t = TrieT::allocator_t; // RecyclingTrieNodeAllocator<TrieT>;
     using prefix_t = TrieT::prefix_t;
     using metadata_t = TrieT::metadata_t;
     using context_cache_t

@@ -23,10 +23,11 @@ virtual addresses).
 #include "mtt/trie/hash_log.h"
 #include "mtt/trie/configs.h"
 
-#include "mtt/trie/debug_macros.h"
+#include "mtt/common/debug_macros.h"
 
 #include <utils/serialize_endian.h>
 #include <utils/threadlocal_cache.h>
+#include <utils/debug_utils.h>
 
 #include <sodium.h>
 
@@ -949,7 +950,7 @@ class MerkleTrie
             Hash buf;
             hash(buf);
 
-            auto str = detail::array_to_str(buf.data(), buf.size());
+            auto str = utils::array_to_str(buf.data(), buf.size());
 
             TRIE_LOG_FILE(out, "%s root hash: %s", padding.c_str(), str.c_str());
         }
@@ -1474,14 +1475,14 @@ TrieNode<TEMPLATE_PARAMS>::_log(std::string padding, FILE* out) const
     if (get_hash_valid()) {
         TRIE_LOG_FILE(out, "%snode hash is: %s",
                  padding.c_str(),
-                 detail::array_to_str(hash.data(), 32).c_str());
+                 utils::array_to_str(hash.data(), 32).c_str());
     }
     if (prefix_len == MAX_KEY_LEN_BITS) {
         std::vector<unsigned char> buf;
         auto const& value = children.value();
         // value.serialize();
         value.copy_data(buf);
-        auto str = detail::array_to_str(buf.data(), buf.size());
+        auto str = utils::array_to_str(buf.data(), buf.size());
         TRIE_LOG_FILE(out, "%svalue serialization is %s", padding.c_str(), str.c_str());
         buf.clear();
     }
@@ -1701,7 +1702,7 @@ compute_hash_branch_node(std::vector<uint8_t>& digest_bytes,
 
     TRIE_INFO(
         "hash input:%s",
-        detail::array_to_str(digest_bytes.data(), digest_bytes.size()).c_str());
+        utils::array_to_str(digest_bytes.data(), digest_bytes.size()).c_str());
     if (crypto_generichash(hash_buf.data(),
                            hash_buf.size(),
                            digest_bytes.data(),
@@ -1792,7 +1793,7 @@ compute_hash_branch_node(std::vector<uint8_t>& digest_bytes,
 
     TRIE_INFO(
         "hash input:%s",
-        detail::array_to_str(digest_bytes.data(), digest_bytes.size()).c_str());
+        utils::array_to_str(digest_bytes.data(), digest_bytes.size()).c_str());
 
     if (crypto_generichash(hash_buf.data(),
                            hash_buf.size(),
@@ -1893,12 +1894,12 @@ MerkleTrie<TEMPLATE_PARAMS>::get_root_hash(Hash& out, std::optional<HashLog<pref
     }
     TRIE_INFO("top level hash in num children: %lu", num_children);
     TRIE_INFO("top level hash in: %s",
-              detail::array_to_str(buf, buf_size).c_str());
+              utils::array_to_str(buf, buf_size).c_str());
 
     crypto_generichash(out.data(), out.size(), buf.data(), buf.size(), NULL, 0);
 
     TRIE_INFO("top level hash out: %s",
-              detail::array_to_str(out.data(), out.size()).c_str());
+              utils::array_to_str(out.data(), out.size()).c_str());
 
     if constexpr (TRIE_LOG_HASH_RECORDS)
     {
@@ -2192,7 +2193,7 @@ TrieNode<TEMPLATE_PARAMS>::create_proof_node()
     PROOF_INFO(
         "prefix_len = %u data=%s",
         prefix_len,
-        detail::array_to_str(output.prefix_length_and_bv.data(), 4).c_str());
+        utils::array_to_str(output.prefix_length_and_bv.data(), 4).c_str());
 
     while (!bv.empty()) {
         auto cur_child_bits = bv.pop();

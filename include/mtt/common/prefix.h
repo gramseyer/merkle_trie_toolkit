@@ -14,9 +14,9 @@ byte array, and one is specialized for uint64 keys.
 #include <cstring>
 #include <mutex>
 
-#include "mtt/trie/debug_macros.h"
-
 #include <utils/serialize_endian.h>
+
+#include <utils/debug_utils.h> // for array_to_str
 
 namespace trie {
 
@@ -320,7 +320,7 @@ public:
 	std::string to_string(const PrefixLenBits len) const {
 		
 		auto bytes = get_bytes(len);
-		auto str = detail::array_to_str(bytes.data(), len.num_prefix_bytes());
+		auto str = utils::array_to_str(bytes.data(), len.num_prefix_bytes());
 		if (len.len % 8 == 4)
 		{
 			str = str.substr(0, str.size() - 1);
@@ -474,7 +474,7 @@ public:
 
 	std::string to_string(const PrefixLenBits& len) const {
 		auto bytes = get_bytes(len);
-		auto str = detail::array_to_str(bytes.data(), len.num_prefix_bytes());
+		auto str = utils::array_to_str(bytes.data(), len.num_prefix_bytes());
 		if (len.len % 8 == 4)
 		{
 			str = str.substr(0, str.size() - 1);
@@ -503,19 +503,5 @@ static void write_node_header(std::vector<unsigned char>& buf, prefix_t const& p
 	auto prefix_bytes = prefix.get_bytes(prefix_len_bits);
 	buf.insert(buf.end(), prefix_bytes.begin(), prefix_bytes.end());
 }
-/*
-[[maybe_unused]]
-static void write_node_header(unsigned char* buf, const unsigned char* prefix, const PrefixLenBits prefix_len, const uint8_t last_byte_mask = 255) {
-	utils::write_unsigned_big_endian(buf, prefix_len.len);
-	int num_prefix_bytes = prefix_len.num_prefix_bytes();
-	memcpy(buf+2, prefix, num_prefix_bytes);
-	buf[num_prefix_bytes + 1] &= last_byte_mask; // +1 from -1 +2
-}
-*/
-
-//[[maybe_unused]]
-//static int get_header_bytes(const PrefixLenBits prefix_len) {
-//	return prefix_len.num_prefix_bytes() + 2;
-//}
 
 } /* trie */
