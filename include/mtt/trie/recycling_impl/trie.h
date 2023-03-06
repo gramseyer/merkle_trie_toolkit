@@ -13,7 +13,6 @@
 #include <tbb/parallel_reduce.h>
 
 #include "mtt/trie/prefix.h"
-#include "mtt/trie/spinlock.h"
 #include "mtt/trie/configs.h"
 #include "mtt/trie/hash_log.h"
 
@@ -25,6 +24,7 @@
 #include <utils/non_movable.h>
 #include <utils/serialize_endian.h>
 #include <utils/threadlocal_cache.h>
+#include <utils/spinlock.h>
 
 #include "mtt/trie/types.h"
 
