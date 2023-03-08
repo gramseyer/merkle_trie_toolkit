@@ -248,6 +248,7 @@ public:
 
     bool try_add_child(uint8_t bb, node_t*& expect, node_t* new_ptr)
     {
+    	utils::print_assert(std::holds_alternative<children_t>(children_or_value), "try_add_child on a value node");
     	bool res = std::get<children_t>(children_or_value)[bb].compare_exchange_strong(expect, new_ptr, std::memory_order_acq_rel);
     	if (res)
     	{
@@ -271,6 +272,12 @@ public:
 
     node_t* get_unique_child()
     {
+
+    	if (std::holds_alternative<value_t>(children_or_value))
+    	{
+    		return nullptr;
+    	}
+
     	for (auto& ref : std::get<children_t>(children_or_value))
     	{
     		auto* ptr = ref.load(std::memory_order_acquire);
@@ -285,6 +292,7 @@ public:
 
     node_t* get_child(uint8_t bb)
     {
+    	utils::print_assert(std::holds_alternative<children_t>(children_or_value), "get_child on a value node");
     	return std::get<children_t>(children_or_value)[bb].load(std::memory_order_acquire);
     }
 
