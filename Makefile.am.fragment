@@ -11,5 +11,6 @@ mtt_TEST_CCS = \
 	%reldir%/tests/test_atomic_merkle_trie.cc \
 	%reldir%/tests/test_merkle_trie.cc \
 	%reldir%/tests/test_prefix.cc \
-	%reldir%/tests/test_serialize.cc
+	%reldir%/tests/test_serialize.cc \
+	%reldir%/tests/test_layered_trie.cc
 
