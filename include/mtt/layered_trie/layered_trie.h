@@ -328,6 +328,8 @@ public:
 
     bool in_normal_form() const
     {
+    	utils::print_assert(get_superseded_layer() != 0, "no uncommitted nodes");
+    	
     	if (is_leaf())
     	{
     		std::printf("this = %p, prefix = %s, is_leaf\n", this, prefix.to_string(prefix_len).c_str());
@@ -354,8 +356,8 @@ public:
     			return false;
     		}
 
-    		std::printf("this %p self layer %lu child layer %lu\n", this, get_superseded_layer(), ptr -> get_superseded_layer());
-    		utils::print_assert(get_superseded_layer() >= ptr -> get_superseded_layer(), "should not increase");
+    		utils::print_assert(get_superseded_layer() >= ptr -> get_superseded_layer() 
+    			|| ptr -> get_superseded_layer() == UINT64_MAX, "should not increase unless not superseded");
 
     	}
     	if (found_active_children != get_num_active_children())
@@ -583,7 +585,10 @@ class TrieLayerRoot : public utils::NonMovableOrCopyable
 	TrieLayerRoot()
 		: layer(0)
 		, root(std::make_unique<node_t>())
-		{}
+		{
+			// emptyargs root constructor sets root to be in committed state
+			// (although layer0 root will never have any children anyways)
+		}
 
 	void set_superseded(uint64_t layer)
 	{

@@ -195,24 +195,27 @@ TEST_CASE("deleted_nodes", "[layered]")
 		REQUIRE(!access_ref.in_normal_form());
 	}
 	{
-
+		
 		auto& layer3 = trie.bump_active_layer();
 
 		auto access_ref = layer3.open_access_reference();
 		REQUIRE(access_ref.is_active());
 
 		access_ref.insert(UInt64Prefix{0x0000'0000'0000'0000}, activated);
-
 		REQUIRE(access_ref.in_normal_form());
 
+		// inserting node preserves normal form
 		access_ref.insert(UInt64Prefix{0x0000'0000'0000'000F}, activated);
+		REQUIRE(access_ref.in_normal_form());
+
+
+		REQUIRE(access_ref.is_active());
 
 		// gc nodes that don't exist shouldn't cause non-normal forms
-		REQUIRE(access_ref.in_normal_form());
 		access_ref.gc_inactive_leaf(UInt64Prefix{0x0000'FFFF'0000'0000});
-
 		REQUIRE(access_ref.in_normal_form());
 		access_ref.gc_inactive_leaf(UInt64Prefix{0x0000'0000'0000'0001});
+		REQUIRE(access_ref.in_normal_form());
 
 
 		access_ref.insert(UInt64Prefix{0x0000'0000'0000'0000}, inactivated);
@@ -272,13 +275,37 @@ TEST_CASE("deleted_nodes", "[layered]")
 			REQUIRE(!access3.expect_superseded(UInt64Prefix{0x0000'0000'0000'0000}, 56, 4));
 			REQUIRE(!access3.expect_superseded(UInt64Prefix{0x0000'0000'0000'0000}, 52, 4));
 			REQUIRE(!access3.expect_superseded(UInt64Prefix{0x0000'0000'0000'0000}, 48, 4));
-
-
-
-
 		}
 
 	}
+}
+
+TEST_CASE("supersede ordering edge case check", "[layered]")
+{
+	using prefix_t = UInt64Prefix;
+	using value_t = test::TestValue;
+	LayeredTrie<prefix_t, value_t> trie;
+
+	auto lambda = [] (test::TestValue& val)
+	{
+		return 1;
+	};
+	{
+		auto& layer1 = trie.bump_active_layer();
+
+		auto access_ref = layer1.open_access_reference();
+
+		REQUIRE(access_ref.is_active());
+
+		REQUIRE(access_ref.insert(UInt64Prefix{0x0000'0000'0000'0000}, lambda) == 1);
+	}
+
+	trie.bump_active_layer();
+	auto& layer1 = trie.get_layer(1);
+
+	auto access_ref = layer1.open_access_reference();
+
+	REQUIRE(access_ref.in_normal_form());
 }
 
 
