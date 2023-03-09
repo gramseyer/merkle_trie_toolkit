@@ -353,6 +353,10 @@ public:
     			std::printf("child %u was not normal\n", bb);
     			return false;
     		}
+
+    		std::printf("this %p self layer %lu child layer %lu\n", this, get_superseded_layer(), ptr -> get_superseded_layer());
+    		utils::print_assert(get_superseded_layer() >= ptr -> get_superseded_layer(), "should not increase");
+
     	}
     	if (found_active_children != get_num_active_children())
     	{
@@ -573,6 +577,7 @@ class TrieLayerRoot : public utils::NonMovableOrCopyable
 		, root(std::make_unique<node_t>(previous_layer.root.get(), layer))
 		{
 			previous_layer.set_superseded(layer);
+			root -> commit_node();
 		}
 
 	TrieLayerRoot()
