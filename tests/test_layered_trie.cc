@@ -167,6 +167,8 @@ TEST_CASE("deleted_nodes", "[layered]")
 
 		REQUIRE(access_ref.is_active());
 
+		REQUIRE(access_ref.in_normal_form());
+
 		access_ref.insert(UInt64Prefix{0x0000'0000'0000'0000}, activated);
 
 		access_ref.insert(UInt64Prefix{0x0000'0000'0000'000F}, inactivated);
@@ -217,7 +219,69 @@ TEST_CASE("deleted_nodes", "[layered]")
 
 		REQUIRE(!access_ref.in_normal_form());
 	}
+
+	SECTION("check superseded layers set correctly")
+	{
+		auto& layer1 = trie.get_layer(1);
+
+		auto access1 = layer1.open_access_reference();
+
+		REQUIRE(!access1.is_active());
+
+		// the active value isn't touched in layer 2
+		REQUIRE(access1.expect_superseded(UInt64Prefix{0x0000'0000'0000'0000}, 64, 3));
+
+		// the gc'd nodes are overwritten in layer 2
+		REQUIRE(access1.expect_superseded(UInt64Prefix{0x0000'0000'0000'0000}, 60, 2));
+		REQUIRE(access1.expect_superseded(UInt64Prefix{0x0000'0000'0000'0000}, 56, 2));
+		REQUIRE(access1.expect_superseded(UInt64Prefix{0x0000'0000'0000'0000}, 52, 2));
+		REQUIRE(access1.expect_superseded(UInt64Prefix{0x0000'0000'0000'0000}, 48, 2));
+		REQUIRE(access1.expect_superseded(UInt64Prefix{0x0000'0000'0000'0000}, 44, 2));
+
+		auto& layer2 = trie.get_layer(2);
+
+		auto access2 = layer2.open_access_reference();
+
+		REQUIRE(!access2.is_active());
+
+		REQUIRE(access2.expect_superseded(UInt64Prefix{0x0000'0000'0000'0000}, 64, 3));
+		REQUIRE(access2.expect_superseded(UInt64Prefix{0x0000'0000'0000'0000}, 60, 3));
+		REQUIRE(access2.expect_superseded(UInt64Prefix{0x0000'0000'0000'0000}, 56, 3));
+		REQUIRE(access2.expect_superseded(UInt64Prefix{0x0000'0000'0000'0000}, 52, 3));
+		REQUIRE(access2.expect_superseded(UInt64Prefix{0x0000'0000'0000'0000}, 48, 3));
+		REQUIRE(access2.expect_superseded(UInt64Prefix{0x0000'0000'0000'0000}, 44, 3));
+
+
+		SECTION("supersede part in layer4")
+		{
+			auto& layer4 = trie.bump_active_layer();
+			auto access4 = layer4.open_access_reference();
+
+			access4.insert(UInt64Prefix{0x0000'0000'0000'0000}, activated);
+
+			auto& layer3 = trie.get_layer(3);
+			auto access3 = layer3.open_access_reference();
+
+			REQUIRE(!access3.is_active());
+
+			REQUIRE(access3.expect_superseded(UInt64Prefix{0x0000'0000'0000'0000}, 64, 4));
+			REQUIRE(access3.expect_superseded(UInt64Prefix{0x0000'0000'0000'0000}, 60, 4));
+			REQUIRE(access3.expect_superseded(UInt64Prefix{0x0000'0000'0000'000F}, 64, UINT64_MAX));
+
+			// these nodes do not exist
+			REQUIRE(!access3.expect_superseded(UInt64Prefix{0x0000'0000'0000'0000}, 56, 4));
+			REQUIRE(!access3.expect_superseded(UInt64Prefix{0x0000'0000'0000'0000}, 52, 4));
+			REQUIRE(!access3.expect_superseded(UInt64Prefix{0x0000'0000'0000'0000}, 48, 4));
+
+
+
+
+		}
+
+	}
 }
+
+
 
 
 }

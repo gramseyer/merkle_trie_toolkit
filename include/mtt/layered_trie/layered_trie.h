@@ -368,6 +368,32 @@ public:
     	return true;
     }
 
+    bool expect_superseded(const prefix_t& query, PrefixLenBits query_len, uint64_t superseded_expect) const
+    {
+    	if (prefix_len > query_len) {
+    		return false;
+    	}
+
+    	auto prefix_match_len = get_prefix_match_len(query, query_len);
+
+    	if (prefix_len == query_len && prefix_match_len == prefix_len)
+    	{
+    		return superseded_expect == get_superseded_layer();
+    	}
+
+    	auto bb = query.get_branch_bits(prefix_len);
+
+    	// value nodes should be ruled out by this point
+    	auto const* child = get_child(bb);
+
+    	if (child == nullptr)
+    	{
+    		return false;
+    	}
+
+    	return child -> expect_superseded(query, query_len, superseded_expect);
+    }
+
 
 /*
     int32_t
@@ -512,6 +538,11 @@ public:
 	bool in_normal_form() const
 	{
 		return base_reference.root -> in_normal_form();
+	}
+
+	bool expect_superseded(const prefix_t& query, uint16_t query_len, uint64_t superseded_expect) const
+	{
+		return base_reference.root -> expect_superseded(query, PrefixLenBits{query_len}, superseded_expect);
 	}
 };
 
