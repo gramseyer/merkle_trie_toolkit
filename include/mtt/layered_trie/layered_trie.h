@@ -221,8 +221,10 @@ public:
 	{
 		return prefix_len == MAX_KEY_LEN_BITS;
 	}
-	bool is_active_leaf() const 
+
+	bool is_active_leaf(uint64_t querying_layer) const 
 	{
+		utils::print_assert(querying_layer > current_layer, "can't ask for is_active before taking a snapshot");
 		return is_leaf() && std::get<value_t>(children_or_value).is_active();
 	}
 
@@ -233,7 +235,8 @@ public:
 
 	void commit_node()
 	{
-		superseded_in_layer.store(UINT64_MAX, std::memory_order_release);
+		set_superseded_layer(UINT64_MAX);
+		//superseded_in_layer.store(UINT64_MAX, std::memory_order_release);
 	}
 
 	uint64_t get_layer() const {
@@ -244,7 +247,8 @@ public:
     auto
     insert(prefix_t const& new_prefix,
            auto modify_lambda,
-           uint64_t current_layer);
+           uint64_t current_layer,
+           bool do_gc);
 
     bool try_add_child(uint8_t bb, node_t*& expect, node_t* new_ptr)
     {
@@ -252,7 +256,6 @@ public:
     	bool res = std::get<children_t>(children_or_value)[bb].compare_exchange_strong(expect, new_ptr, std::memory_order_acq_rel);
     	if (res)
     	{
-    		new_ptr -> commit_node();
     		if (expect == nullptr)
     		{
     			active_children.fetch_add(1, std::memory_order_release);
@@ -260,6 +263,9 @@ public:
     		if (new_ptr == nullptr)
     		{
     			active_children.fetch_sub(1, std::memory_order_release);
+    		} else
+    		{
+    			new_ptr -> commit_node();
     		}
     	}
     	return res;
@@ -272,7 +278,6 @@ public:
 
     node_t* get_unique_child()
     {
-
     	if (std::holds_alternative<value_t>(children_or_value))
     	{
     		return nullptr;
@@ -296,8 +301,10 @@ public:
     	return std::get<children_t>(children_or_value)[bb].load(std::memory_order_acquire);
     }
 
+
     const node_t* get_child(uint8_t bb) const
     {
+    	utils::print_assert(std::holds_alternative<children_t>(children_or_value), "get_child const on a value node");
     	return std::get<children_t>(children_or_value)[bb].load(std::memory_order_acquire);
     }
 
@@ -315,6 +322,50 @@ public:
 
     PrefixLenBits get_prefix_len() const {
     	return prefix_len;
+    }
+
+    // TESTING ONLY
+
+    bool in_normal_form() const
+    {
+    	if (is_leaf())
+    	{
+    		std::printf("this = %p, prefix = %s, is_leaf\n", this, prefix.to_string(prefix_len).c_str());
+    		utils::print_assert(get_num_active_children() == 0, "no children of value nodes");
+    		return std::get<value_t>(children_or_value).is_active();
+    	}
+
+    	std::printf("this = %p, prefix = %s, not leaf\n", this, prefix.to_string(prefix_len).c_str());
+
+    	uint8_t found_active_children = 0;
+
+    	for (uint8_t bb = 0; bb < 16; /*TODO get size statically from type information children_t::size(); */ bb++)
+    	{
+    		auto const* ptr = get_child(bb);
+
+    		if (ptr == nullptr)
+    		{
+    			continue;
+    		}
+    		found_active_children ++;
+    		if (!ptr -> in_normal_form())
+    		{
+    			std::printf("child %u was not normal\n", bb);
+    			return false;
+    		}
+    	}
+    	if (found_active_children != get_num_active_children())
+    	{
+    		std::printf("mismatch in num active children\n");
+    		return false;
+    	}
+
+    	if (found_active_children <= 1 && prefix_len.len != 0)
+    	{
+    		return false;
+    	}
+
+    	return true;
     }
 
 
@@ -437,11 +488,30 @@ public:
 	auto insert(const prefix_t& prefix, auto lambda)
 	{
 		utils::print_assert(layer_active, "invalid insert call");
-		return base_reference.root -> insert(prefix, lambda, base_reference.layer);
+		return base_reference.root -> insert(prefix, lambda, base_reference.layer, false);
+	}
+
+	void gc_inactive_leaf(const prefix_t& prefix)
+	{
+		utils::print_assert(layer_active, "invalid gc call");
+
+		auto lambda = [] (value_t&) -> void
+		{
+			// no op
+		};
+
+		base_reference.root -> insert(prefix, lambda, base_reference.layer, true);
 	}
 
 	bool is_active() const {
 		return layer_active;
+	}
+
+	// TESTING
+
+	bool in_normal_form() const
+	{
+		return base_reference.root -> in_normal_form();
 	}
 };
 
@@ -525,6 +595,37 @@ public:
 		return *roots.at(active_layer);
 	}
 
+	layer_t& get_layer(uint64_t layer)
+	{
+		std::lock_guard lock(mtx);
+		return *roots.at(layer);
+	}
+
+	// raising garbage collection lower bound to layer N
+	// immediately invalidates any references to layer <= N
+	// exposed by get_layer() or bump_active_layer()
+	void raise_gc_lowerbound(uint64_t layer)
+	{
+		std::lock_guard lock(mtx);
+
+		freeable_lowerbound = std::max(layer, freeable_lowerbound);
+
+		// cannot free active layer or the layer immediately below it
+		uint64_t actually_to_be_freed = std::min(freeable_lowerbound, active_layer - 2);
+
+		for (auto i = roots.begin(); i != roots.end();)
+		{
+			if (i->first <= actually_to_be_freed)
+			{
+				i = roots.erase(i);
+			}
+			else
+			{
+				i++;
+			}
+		}
+	}
+
 }; 
 
 
@@ -595,8 +696,11 @@ auto
 LTN_DECL::insert(
 	prefix_t const& new_prefix,
 	auto modify_lambda,
-	uint64_t current_layer)
+	uint64_t current_layer,
+	bool do_gc)
 {
+
+	using ret_type = decltype((modify_lambda)(std::declval<value_t&>()));
 
 	auto prefix_match_len = get_prefix_match_len(new_prefix);
 
@@ -617,12 +721,16 @@ LTN_DECL::insert(
 
 		if (child == nullptr)
 		{
+			if (do_gc)
+			{
+				return ret_type();
+			}
 			// insert new node
 			node_t* new_node = new node_t(new_prefix, value_t(), current_layer);
 
 			if (try_add_child(bb, child, new_node))
 			{
-				return new_node -> insert(new_prefix, modify_lambda, current_layer);
+				return new_node -> insert(new_prefix, modify_lambda, current_layer, do_gc);
 			}
 			delete new_node;
 		} 
@@ -635,9 +743,16 @@ LTN_DECL::insert(
 				if (child -> get_layer() != current_layer)
 				{
 					node_t* new_node;
-					if (child -> get_num_active_children() == 0 && !(child->is_active_leaf()))
+					if (child -> get_num_active_children() == 0 && !(child->is_active_leaf(current_layer)))
 					{
-						new_node = new node_t(new_prefix, value_t(), current_layer);
+						if (do_gc)
+						{
+							new_node = nullptr;
+						} 
+						else
+						{
+							new_node = new node_t(new_prefix, value_t(), current_layer);
+						}
 					}
 					else
 					{
@@ -657,23 +772,38 @@ LTN_DECL::insert(
 							target_node = target_node -> get_unique_child();
 						} while (target_node != nullptr);
 
-						//child -> set_superseded_layer(current_layer);
-						return new_node -> insert(new_prefix, modify_lambda, current_layer);
+						if (new_node != nullptr)
+						{
+							//child -> set_superseded_layer(current_layer);
+							return new_node -> insert(new_prefix, modify_lambda, current_layer, do_gc);
+						} else
+						{
+							return ret_type();
+						}
+
 					}
-					delete new_node;
+					if (new_node != nullptr)
+					{
+						delete new_node;
+					}
 				} 
 				else
 				{
-					return child -> insert(new_prefix, modify_lambda, current_layer);
+					return child -> insert(new_prefix, modify_lambda, current_layer, do_gc);
 				}
 			} else
 			{
+				if (do_gc)
+				{
+					return ret_type();
+				}
+
 				node_t* new_node = new node_t(new_prefix, join_len, current_layer);
 				new_node -> set_unique_child(child->get_prefix().get_branch_bits(join_len), child);
 
 				if (try_add_child(bb, child, new_node))
 				{
-					return new_node -> insert(new_prefix, modify_lambda, current_layer);
+					return new_node -> insert(new_prefix, modify_lambda, current_layer, do_gc);
 				}
 				delete new_node;
 			}
@@ -681,6 +811,7 @@ LTN_DECL::insert(
 		__builtin_ia32_pause();
 	}
 }
+
 
 /*
 
