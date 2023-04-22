@@ -38,6 +38,10 @@ struct PrefixLenBits {
 		return detail::num_prefix_bytes_(len);
 	}
 
+	uint8_t get_truncate_mask() const {
+		return 0xFF << (len % 8);
+	}
+
 	//! Number of bytes that are fully used by len bits.
 	size_t num_fully_covered_bytes() const {
 		return len / 8;
@@ -273,6 +277,23 @@ public:
 		return out;
 	}
 
+	void write_bytes_to(std::vector<uint8_t>& out, PrefixLenBits const& prefix_len) const
+	{
+		uint8_t bytes_to_write = prefix_len.num_prefix_bytes();
+
+		const unsigned char* ptr 
+			= reinterpret_cast<const unsigned char*>(data.data());
+
+		out.insert(out.end(), ptr, ptr + bytes_to_write);
+		out.back() &= prefix_len.get_truncate_mask();
+
+
+	//	utils::append_unsigned_big_endian(out, prefix);
+	//	uint8_t extra_bytes = 8 - prefix.num_prefix_bytes();
+	//	out.erase(out.end() - extra_bytes, out.end());
+	}
+
+
 	//! Return a vector of bytes with the prefix's contents.
 	//! Note: results are in little-endian order.  Should not be used externally.
 	std::vector<unsigned char> get_bytes(const PrefixLenBits prefix_len) const {
@@ -425,6 +446,14 @@ public:
 		return out;
 	}
 
+	void write_bytes_to(std::vector<uint8_t>& out, PrefixLenBits const& prefix_len) const
+	{
+		utils::append_unsigned_big_endian(out, prefix);
+		uint8_t extra_bytes = 8 - prefix_len.num_prefix_bytes();
+		out.erase(out.end() - extra_bytes, out.end());
+		out.back() &= prefix_len.get_truncate_mask();
+	}
+
 	void
 	from_bytes_array(const std::vector<uint8_t>& bytes)
 	{
@@ -500,8 +529,10 @@ static void write_node_header(std::vector<unsigned char>& buf, prefix_t const& p
 
 	utils::append_unsigned_big_endian(buf, prefix_len_bits.len);
 
-	auto prefix_bytes = prefix.get_bytes(prefix_len_bits);
-	buf.insert(buf.end(), prefix_bytes.begin(), prefix_bytes.end());
+	prefix.write_bytes_to(buf, prefix_len_bits);
+
+	//auto prefix_bytes = prefix.get_bytes(prefix_len_bits);
+	//buf.insert(buf.end(), prefix_bytes.begin(), prefix_bytes.end());
 }
 
 } /* trie */

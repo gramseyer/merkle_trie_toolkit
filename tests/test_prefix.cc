@@ -195,7 +195,25 @@ TEST_CASE("uint64 from_bytes_array", "[prefix]")
 	query = 0;
 	read_unsigned_big_endian(key2, query);
 	REQUIRE(query == value);
+}
 
+TEST_CASE("uint64 write_node_header", "[prefix]")
+{
+	UInt64Prefix key(0xABCDEF01'23456789);
 
+	auto check = [&](std::vector<uint8_t> expect, PrefixLenBits len) 
+	{
+		std::vector<uint8_t> out;
+		write_node_header(out, key, len);
+		REQUIRE(out == expect);
+	};
+
+	check({0x00, 0x00}, PrefixLenBits{0});
+	check({0x00, 0x04, 0xA0}, PrefixLenBits{4});
+	check({0x00, 0x08, 0xAB}, PrefixLenBits{8});
+	check({0x00, 0x0C, 0xAB, 0xC0}, PrefixLenBits{12});
+
+	check({0x00, 0x3C, 0xAB, 0xCD, 0xEF, 0x01, 0x23, 0x45, 0x67, 0x80}, PrefixLenBits{60});
+	check({0x00, 0x40, 0xAB, 0xCD, 0xEF, 0x01, 0x23, 0x45, 0x67, 0x89}, PrefixLenBits{64});
 }
 
