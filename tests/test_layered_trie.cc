@@ -17,7 +17,7 @@ namespace test
 		{
 			return true;
 		}
-		auto get_value_commitment() { return EmptyWriteable{}; }
+		auto get_layer_commitment() const { return EmptyWriteable{}; }
 
 		TestValue() = default;
 		TestValue(const EmptyWriteable&) {}
@@ -39,7 +39,7 @@ namespace test
 			return true;
 		}
 
-		auto get_value_commitment() { return CounterWriteable{counter}; }
+		auto get_layer_commitment() const { return CounterWriteable{counter}; }
 
 		CounterValue() = default;
 		CounterValue(const CounterWriteable& v) : counter(v.counter) {}
@@ -61,7 +61,7 @@ namespace test
 		bool is_active() const {
 			return active;
 		}
-		auto get_value_commitment() { return ActivateableWriteable{active}; }
+		auto get_layer_commitment() const { return ActivateableWriteable{active}; }
 
 		ActivateableValue() = default;
 		ActivateableValue(const ActivateableWriteable& v) : active(v.active) {}

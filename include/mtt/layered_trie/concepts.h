@@ -45,15 +45,12 @@ concept ValueType =
     requires(const T& t)
     {
         { t.is_active() } -> std::same_as<bool>;
-    } 
-    && requires(T t)
-    {
-        t.get_value_commitment();
-        T(t.get_value_commitment());
+        t.get_layer_commitment();
+        T(t.get_layer_commitment());
     }
-    && requires(T t, std::vector<uint8_t>& v)
+    && requires(const T& t, std::vector<uint8_t>& v)
     {
-        t.get_value_commitment().write_to(v);
+        t.get_layer_commitment().write_to(v);
     };
 
 } // namespace trie

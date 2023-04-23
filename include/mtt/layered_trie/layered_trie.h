@@ -96,8 +96,8 @@ public:
 		: children_or_value(
 			std::visit( 
 				detail::overloaded {
-					[] (value_t& value) -> std::variant<value_t, children_t> {
-						return std::variant<value_t, children_t>(std::in_place_type<value_t>, value.get_value_commitment());
+					[] (const value_t& value) -> std::variant<value_t, children_t> {
+						return std::variant<value_t, children_t>(std::in_place_type<value_t>, value.get_layer_commitment());
 					},
 					[] (const children_t& children) -> std::variant<value_t, children_t>
 					{
@@ -901,7 +901,7 @@ LTN_DECL::compute_hash(std::vector<uint8_t>& digest_bytes)
 		utils::print_assert(std::get<value_t>(children_or_value).is_active(), "compute hash on inactive node");
 
 		write_node_header(digest_bytes, prefix, prefix_len);
-		auto commitment = std::get<value_t>(children_or_value).get_value_commitment();
+		auto commitment = std::get<value_t>(children_or_value).get_layer_commitment();
 
 		commitment.write_to(digest_bytes);
 
