@@ -8,6 +8,8 @@
 #include "mtt/common/insert_fn.h"
 #include "mtt/common/utils.h"
 
+#include "mtt/layered_trie/concepts.h"
+
 #include <array>
 #include <atomic>
 #include <cstdint>
@@ -31,20 +33,7 @@ struct overloaded : Ts... {
 
 }
 
-struct LayeredTrieNodeMetadataBase
-{
-	bool valid = false;
-	Hash hash;
-	uint32_t size = 0;
-};
-
-template<typename T>
-concept LayeredTrieNodeMetadata =
-	requires(T) {
-		std::is_base_of<LayeredTrieNodeMetadataBase, T>::value;
-	};
-
-template<typename prefix_t, typename value_t, LayeredTrieNodeMetadata metadata_t>
+template<typename prefix_t, ValueType value_t, LayeredTrieNodeMetadata metadata_t>
 class LayeredTrieNode
 {
 	using node_t = LayeredTrieNode<prefix_t, value_t, metadata_t>;
@@ -55,11 +44,6 @@ class LayeredTrieNode
 
 	std::variant<value_t, children_t> children_or_value;
 
-//	union {
-//		std::array<std::atomic<node_t*>, 16> children;
-//		value_t value;
-//	};
-
 	const prefix_t prefix;
 	const PrefixLenBits prefix_len;
 	const uint64_t current_layer;
@@ -67,7 +51,6 @@ class LayeredTrieNode
 	metadata_t metadata;
 
 	std::atomic<uint8_t> active_children = 0;
-
 
 	// this node is rendered obsolete in a higher layer.
 	// If 0, then this node does not own any references to child nodes.
@@ -187,9 +170,13 @@ public:
 	 */
 	~LayeredTrieNode()
 	{
+		//std::printf("call dtor on %p\n", this);
+		//std::printf("prefix %s (%lu)\n", prefix.to_string(prefix_len).c_str(), prefix_len);
 		if (!is_leaf())
 		{
+		//	std::printf("not is_leaf\n");
 			uint64_t superseded_layer = get_superseded_layer();
+		//	std::printf("superseded_layer %lu\n", superseded_layer);
 			if (superseded_layer == 0)
 			{
 				return;
@@ -206,6 +193,7 @@ public:
 
 					if (superseded_layer == child_superseded_layer)
 					{
+						//std::printf("start deleting child on %u at %p\n", bb, ptr);
 						delete ptr;
 					}
 					if (superseded_layer > child_superseded_layer)
@@ -230,19 +218,19 @@ public:
 
 	void set_superseded_layer(uint64_t layer)
 	{
+	//	std::printf("superseding %s (%lu) @ %p with layer %lu\n", prefix.to_string(prefix_len).c_str(),
+	//		prefix_len.len, this, layer);
 		superseded_in_layer.store(layer, std::memory_order_release);
 	}
 
 	void commit_node()
 	{
 		set_superseded_layer(UINT64_MAX);
-		//superseded_in_layer.store(UINT64_MAX, std::memory_order_release);
 	}
 
 	uint64_t get_layer() const {
 		return current_layer;
 	}
-
 
     auto
     insert(prefix_t const& new_prefix,
@@ -324,6 +312,86 @@ public:
     	return prefix_len;
     }
 
+    metadata_t const&
+    compute_hash(std::vector<uint8_t>& digest_bytes)
+    {
+    	if (metadata.hash_valid) {
+    		return metadata;
+    	}
+    	auto hash_bytes = [] (std::vector<uint8_t>& bytes, metadata_t& meta) {
+    		if (crypto_generichash(
+	        	meta.hash.data(),
+	        	meta.hash.size(),
+	        	bytes.data(),
+	        	bytes.size(),
+	       		NULL,
+	      		0) != 0)
+    		{
+        		throw std::runtime_error("error from crypto_generichash");
+    		}
+    		meta.hash_valid = true;
+    	};
+
+    	if (is_leaf())
+    	{
+    		digest_bytes.clear();
+    		utils::print_assert(std::get<value_t>(children_or_value).is_active(), "compute hash on inactive node");
+
+    		write_node_header(digest_bytes, prefix, prefix_len);
+    		auto commitment = std::get<value_t>(children_or_value).get_value_commitment();
+
+    		commitment.write_to(digest_bytes);
+
+    		metadata.read(commitment);
+    		metadata.size = 1;
+    		hash_bytes(digest_bytes, metadata);
+
+    		return metadata;
+    	}
+
+    	uint8_t found_active_children = 0;
+    	TrieBitVector bv;
+
+    	for (uint8_t bb = 0; bb < 16; bb++)
+    	{
+    		auto* ptr = get_child(bb);
+
+    		if (ptr == nullptr || ptr -> get_num_active_children() == 0)
+    		{
+    			continue;
+    		}
+    		found_active_children ++;
+    		bv.add(bb);
+    		ptr -> compute_hash(digest_bytes);
+    	}
+    	digest_bytes.clear();
+
+    	write_node_header(digest_bytes, prefix, prefix_len);
+    	bv.write(digest_bytes);
+
+    	for (uint8_t bb = 0; bb < 16; bb++)
+    	{
+    		auto* ptr = get_child(bb);
+
+    		if (ptr == nullptr || ptr -> get_num_active_children() == 0)
+    		{
+    			continue;
+    		}
+    		if (found_active_children == 1)
+    		{
+    			metadata = ptr -> compute_hash(digest_bytes);
+    			utils::print_assert(metadata.hash_valid, "must get valid hash from child");
+    			return metadata;
+    		}
+    		auto const& child_meta = ptr -> compute_hash(digest_bytes);
+    		metadata += child_meta;
+    		child_meta.write_to(digest_bytes);
+    	}
+
+    	hash_bytes(digest_bytes, metadata);
+    	return metadata;
+    } 
+
     // TESTING ONLY
 
     bool in_normal_form() const
@@ -332,12 +400,15 @@ public:
     	
     	if (is_leaf())
     	{
-    		std::printf("this = %p, prefix = %s, is_leaf\n", this, prefix.to_string(prefix_len).c_str());
+    	//	std::printf("this = %p, prefix = %s (%lu), is_leaf, superseded = %lu\n", this, prefix.to_string(prefix_len).c_str(), 
+    	//		prefix_len.len, get_superseded_layer());
     		utils::print_assert(get_num_active_children() == 0, "no children of value nodes");
     		return std::get<value_t>(children_or_value).is_active();
     	}
 
-    	std::printf("this = %p, prefix = %s, not leaf\n", this, prefix.to_string(prefix_len).c_str());
+    	//std::printf("this = %p, prefix = %s (%lu), not leaf, superseded = %lu\n", this, 
+    	//	prefix.to_string(prefix_len).c_str(), prefix_len.len,
+    	//	get_superseded_layer());
 
     	uint8_t found_active_children = 0;
 
@@ -352,17 +423,19 @@ public:
     		found_active_children ++;
     		if (!ptr -> in_normal_form())
     		{
-    			std::printf("child %u was not normal\n", bb);
+    		//	std::printf("child %u was not normal\n", bb);
     			return false;
     		}
 
-    		utils::print_assert(get_superseded_layer() >= ptr -> get_superseded_layer() 
+    		//std::printf("self %llu child %llu\n", get_superseded_layer(), ptr -> get_superseded_layer());
+
+    		utils::print_assert(get_superseded_layer() == ptr -> get_superseded_layer() 
     			|| ptr -> get_superseded_layer() == UINT64_MAX, "should not increase unless not superseded");
 
     	}
     	if (found_active_children != get_num_active_children())
     	{
-    		std::printf("mismatch in num active children\n");
+    	//	std::printf("mismatch in num active children\n");
     		return false;
     	}
 
@@ -377,6 +450,7 @@ public:
     bool expect_superseded(const prefix_t& query, PrefixLenBits query_len, uint64_t superseded_expect) const
     {
     	if (prefix_len > query_len) {
+    	//	std::printf("expect_superseded1: query %s (%lu) not found\n", query.to_string(query_len).c_str(), query_len.len);
     		return false;
     	}
 
@@ -384,6 +458,9 @@ public:
 
     	if (prefix_len == query_len && prefix_match_len == prefix_len)
     	{
+    	//	std::printf("expect_superseded: found match %s (%lu) @ %p expect %lu got %lu\n", query.to_string(query_len).c_str(), query_len.len,
+    	//		this,
+    	//		superseded_expect, get_superseded_layer());
     		return superseded_expect == get_superseded_layer();
     	}
 
@@ -394,12 +471,12 @@ public:
 
     	if (child == nullptr)
     	{
+    	//	std::printf("expect_superseded2: query %s (%lu) not found\n", query.to_string(query_len).c_str(), query_len.len);
     		return false;
     	}
 
     	return child -> expect_superseded(query, query_len, superseded_expect);
     }
-
 
 /*
     int32_t
@@ -504,7 +581,6 @@ class WeakLayerReference
 
 	std::shared_lock<std::shared_mutex> lock;
 
-
 	const bool layer_active;
 
 	WeakLayerReference(root_t& reference)
@@ -521,6 +597,16 @@ public:
 	{
 		utils::print_assert(layer_active, "invalid insert call");
 		return base_reference.root -> insert(prefix, lambda, base_reference.layer, false);
+	}
+
+	Hash compute_hash()
+	{
+		utils::print_assert(!layer_active, "invalid compute hash");
+
+		std::vector<uint8_t> digest_bytes;
+		auto out = base_reference.root -> compute_hash(digest_bytes);
+		utils::print_assert(out.hash_valid, "returned hash is valid");
+		return out.hash;
 	}
 
 	void gc_inactive_leaf(const prefix_t& prefix)
@@ -740,6 +826,8 @@ LTN_DECL::insert(
 	uint64_t current_layer,
 	bool do_gc)
 {
+	//std::printf("insert %s to prefix %s (%lu) @ %p, do_gc=%lu\n", new_prefix.to_string(MAX_KEY_LEN_BITS).c_str(),
+	//	prefix.to_string(prefix_len).c_str(), prefix_len.len, this, do_gc);
 
 	using ret_type = decltype((modify_lambda)(std::declval<value_t&>()));
 
@@ -779,7 +867,8 @@ LTN_DECL::insert(
 		{
 			PrefixLenBits join_len = child->get_prefix_match_len(new_prefix);
 
-			if (join_len >= child -> get_prefix_len())
+			utils::print_assert(join_len <= child -> get_prefix_len(), "too long");
+			if (join_len == child -> get_prefix_len())
 			{
 				if (child -> get_layer() != current_layer)
 				{
@@ -803,15 +892,22 @@ LTN_DECL::insert(
 							utils::print_assert(target_node -> get_layer() < current_layer, "layer mismatch");
 							target_node = target_node -> get_unique_child();
 						}
+
 						new_node = new node_t(target_node, current_layer);
 					}
+					node_t* old_child = child;
 					if (try_add_child(bb, child, new_node))
 					{
-						node_t* target_node = child;
-						do {
+						node_t* target_node = old_child;
+						while (target_node -> get_num_active_children() == 1)
+						{
+							utils::print_assert(target_node -> get_layer() < current_layer, "layer mismatch2");
 							target_node -> set_superseded_layer(current_layer);
+
 							target_node = target_node -> get_unique_child();
-						} while (target_node != nullptr);
+						}
+						utils::print_assert(target_node != nullptr, "invalid unique_child returned");
+						target_node -> set_superseded_layer(current_layer);
 
 						if (new_node != nullptr)
 						{
@@ -836,6 +932,7 @@ LTN_DECL::insert(
 			{
 				if (do_gc)
 				{
+					// node to be garbage collected already does not exist
 					return ret_type();
 				}
 

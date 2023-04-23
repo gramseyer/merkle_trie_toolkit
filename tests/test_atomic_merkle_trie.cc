@@ -22,7 +22,6 @@ namespace trie
 
 TEST_CASE("basic get subnode ref and normalize", "[amt]")
 {
-
 	using mt = AtomicMerkleTrie<UInt64Prefix, EmptyValue, 256>;
 
 	mt m;
@@ -183,7 +182,6 @@ TEST_CASE("get proper length subnode")
 			b -> template insert<InsertFn>(prefix_t(0xFFFF'0000'0000'0000), EmptyValue{}, m.get_gc());
 		}
 
-		std::printf("start\n");
 		auto h1 = m.hash_and_normalize();
 
 		auto* b = m.get_subnode_ref_and_invalidate_hash(prefix_t(0x1000'0000'0000'0000), PrefixLenBits(4));

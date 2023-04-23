@@ -7,21 +7,36 @@ namespace trie
 
 namespace test
 {
+	struct EmptyWriteable {
+		void write_to(std::vector<uint8_t>&) {}
+	};
+
 	struct TestValue : public EmptyValue
 	{
 		bool is_active() const
 		{
 			return true;
 		}
+		auto get_value_commitment() { return EmptyWriteable{}; }
 	};
 
 	struct CounterValue 
 	{
 		uint32_t counter = 0;
 
+		struct CounterWriteable
+		{
+			uint32_t counter;
+			void write_to(std::vector<uint8_t>& v) {
+				utils::append_unsigned_big_endian(v, counter);
+			}
+		};
+
 		bool is_active() const {
 			return true;
 		}
+
+		auto get_value_commitment() { return CounterWriteable{counter}; }
 	};
 
 	struct ActivateableValue
@@ -31,6 +46,7 @@ namespace test
 		bool is_active() const {
 			return active;
 		}
+		auto get_value_commitment() { return EmptyWriteable{}; }
 	};
 }
 
@@ -280,6 +296,76 @@ TEST_CASE("deleted_nodes", "[layered]")
 	}
 }
 
+TEST_CASE("deleted_nodes smallcase", "[layered]")
+{
+	using prefix_t = UInt64Prefix;
+	using value_t = test::ActivateableValue;
+	LayeredTrie<prefix_t, value_t> trie;
+
+	auto activated = [] (test::ActivateableValue& val)
+	{
+		val.active = true;
+		return;
+	};
+
+	auto inactivated = [] (test::ActivateableValue& val)
+	{
+		val.active = false;
+		return;
+	};
+
+
+	{
+		auto& layer1 = trie.bump_active_layer();
+
+		auto access_ref = layer1.open_access_reference();
+
+		REQUIRE(access_ref.is_active());
+
+		REQUIRE(access_ref.in_normal_form());
+
+		access_ref.insert(UInt64Prefix{0x0000'0000'0000'0000}, activated);
+		access_ref.insert(UInt64Prefix{0x0000'0000'0000'000F}, activated);
+
+		access_ref.insert(UInt64Prefix{0x0000'0000'000F'0000}, inactivated);
+		REQUIRE(!access_ref.in_normal_form());
+	}
+
+	{
+		auto& layer2 = trie.bump_active_layer();
+
+		auto access_ref = layer2.open_access_reference();
+		REQUIRE(access_ref.is_active());
+
+		access_ref.gc_inactive_leaf(UInt64Prefix{0x0000'0000'000F'0000});
+
+		REQUIRE(!access_ref.in_normal_form());
+	}
+
+	{
+		
+		auto& layer3 = trie.bump_active_layer();
+
+		auto access_ref = layer3.open_access_reference();
+		REQUIRE(access_ref.is_active());
+
+		access_ref.insert(UInt64Prefix{0x0000'0000'0000'0000}, activated);
+		REQUIRE(access_ref.in_normal_form());
+	}
+
+	auto& layer1 = trie.get_layer(1);
+
+	auto access1 = layer1.open_access_reference();
+
+	REQUIRE(!access1.is_active());
+
+	REQUIRE(access1.expect_superseded(UInt64Prefix{0x0000'0000'0000'0000}, 64, 3));
+	REQUIRE(access1.expect_superseded(UInt64Prefix{0x0000'0000'0000'000F}, 64, UINT64_MAX));
+
+	// the gc'd nodes are overwritten in layer 2
+	REQUIRE(access1.expect_superseded(UInt64Prefix{0x0000'0000'0000'0000}, 44, 2));
+}
+
 TEST_CASE("supersede ordering edge case check", "[layered]")
 {
 	using prefix_t = UInt64Prefix;
@@ -308,7 +394,147 @@ TEST_CASE("supersede ordering edge case check", "[layered]")
 	REQUIRE(access_ref.in_normal_form());
 }
 
+TEST_CASE("supersede dtor ordering check", "[layered]")
+{
+	using prefix_t = UInt64Prefix;
+	using value_t = test::TestValue;
+	LayeredTrie<prefix_t, value_t> trie;
 
+	auto lambda = [] (test::TestValue& val)
+	{
+		return 1;
+	};
+
+	/**
+	 * 
+	 * layer3 root --- node --- node
+	 * 
+	 * layer2 root 
+	 * 
+	 * layer1 root --- node --- node --- leaf
+	 * 
+	 */
+
+	{
+		auto& layer1 = trie.bump_active_layer();
+
+		auto access_ref = layer1.open_access_reference();
+
+		REQUIRE(access_ref.is_active());
+		REQUIRE(access_ref.insert(UInt64Prefix{0x0000'0000'0000'0000}, lambda) == 1);
+		REQUIRE(access_ref.insert(UInt64Prefix{0x0000'0000'0000'0001}, lambda) == 1);
+		REQUIRE(access_ref.insert(UInt64Prefix{0x0000'0000'0000'0010}, lambda) == 1);
+
+		REQUIRE(access_ref.in_normal_form());
+	}
+
+	{
+		auto& layer2 = trie.bump_active_layer();
+
+		auto access_ref = layer2.open_access_reference();
+
+		REQUIRE(access_ref.is_active());
+		REQUIRE(access_ref.insert(UInt64Prefix{0x1000'0000'0000'0000}, lambda) == 1);
+		REQUIRE(access_ref.in_normal_form());
+	}
+	trie.raise_gc_lowerbound(1);
+	{
+		auto& layer3 = trie.bump_active_layer();
+
+		auto access_ref = layer3.open_access_reference();
+
+		REQUIRE(access_ref.is_active());
+		REQUIRE(access_ref.insert(UInt64Prefix{0x0000'0000'0000'0001}, lambda) == 1);
+		REQUIRE(access_ref.in_normal_form());
+	}
+	trie.raise_gc_lowerbound(2);
+}
+
+TEST_CASE("hash counter trie generalcase, no metadata", "[layered]")
+{
+	using prefix_t = UInt64Prefix;
+	using value_t = test::CounterValue;
+	LayeredTrie<prefix_t, value_t> trie;
+
+	auto lambda = [] (test::CounterValue& val)
+	{
+		val.counter = 1;
+		return val.counter;
+	};
+
+	Hash l1hash, l2hash;
+
+	const uint64_t test_size = 1000;
+
+	{
+		auto& layer1 = trie.bump_active_layer();
+
+		auto access_ref = layer1.open_access_reference();
+
+		REQUIRE(access_ref.is_active());
+
+		for (uint64_t i = 0; i < test_size; i++)
+		{
+			uint64_t query = (i * 17) % 6701;  //6701 is prime
+
+			REQUIRE(access_ref.insert(UInt64Prefix{query}, lambda) == 1);
+		}
+	}
+
+	{
+		SECTION("repeat inserts")
+		{
+			{
+				auto& layer2 = trie.bump_active_layer();
+
+				{
+					auto layer1 = trie.get_layer(1).open_access_reference();
+					l1hash = layer1.compute_hash();
+				}
+
+				auto access_ref = layer2.open_access_reference();
+
+				REQUIRE(access_ref.is_active());
+
+				for (uint64_t i = 0; i < test_size; i++)
+				{
+					uint64_t query = (i * 17) % 6701;  //6701 is prime
+
+					REQUIRE(access_ref.insert(UInt64Prefix{query}, lambda) == 1);
+				}
+			}
+			trie.bump_active_layer();
+			l2hash = trie.get_layer(2).open_access_reference().compute_hash();
+			REQUIRE(l1hash == l2hash);
+		} 
+		
+		SECTION("new inserts")
+		{
+			{
+				auto& layer2 = trie.bump_active_layer();
+
+				{
+					auto layer1 = trie.get_layer(1).open_access_reference();
+					l1hash = layer1.compute_hash();
+				}
+
+				auto access_ref = layer2.open_access_reference();
+
+				REQUIRE(access_ref.is_active());
+
+				for (uint64_t i = test_size; i < 2*test_size; i++)
+				{
+					uint64_t query = (i * 17) % 6701;  //6701 is prime
+
+					REQUIRE(access_ref.insert(UInt64Prefix{query}, lambda) == 1);
+				}
+			}
+			trie.bump_active_layer();
+			l2hash = trie.get_layer(2).open_access_reference().compute_hash();
+			REQUIRE(l1hash != l2hash);
+		} 
+	}
+}
 
 
 }
