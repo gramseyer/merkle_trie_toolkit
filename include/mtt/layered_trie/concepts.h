@@ -49,6 +49,7 @@ concept ValueType =
     && requires(T t)
     {
         t.get_value_commitment();
+        T(t.get_value_commitment());
     }
     && requires(T t, std::vector<uint8_t>& v)
     {

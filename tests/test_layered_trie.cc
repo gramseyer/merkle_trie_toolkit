@@ -18,6 +18,9 @@ namespace test
 			return true;
 		}
 		auto get_value_commitment() { return EmptyWriteable{}; }
+
+		TestValue() = default;
+		TestValue(const EmptyWriteable&) {}
 	};
 
 	struct CounterValue 
@@ -37,16 +40,31 @@ namespace test
 		}
 
 		auto get_value_commitment() { return CounterWriteable{counter}; }
+
+		CounterValue() = default;
+		CounterValue(const CounterWriteable& v) : counter(v.counter) {}
 	};
 
 	struct ActivateableValue
 	{
 		bool active = false;
 
+		struct ActivateableWriteable
+		{
+			bool active;
+			void write_to(std::vector<uint8_t>& v) {
+				utils::append_unsigned_big_endian(v, static_cast<uint8_t>(active));
+			}
+		};
+
+
 		bool is_active() const {
 			return active;
 		}
-		auto get_value_commitment() { return EmptyWriteable{}; }
+		auto get_value_commitment() { return ActivateableWriteable{active}; }
+
+		ActivateableValue() = default;
+		ActivateableValue(const ActivateableWriteable& v) : active(v.active) {}
 	};
 }
 

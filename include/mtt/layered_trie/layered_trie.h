@@ -96,8 +96,8 @@ public:
 		: children_or_value(
 			std::visit( 
 				detail::overloaded {
-					[] (const value_t& value) -> std::variant<value_t, children_t> {
-						return std::variant<value_t, children_t>(std::in_place_type<value_t>, value);
+					[] (value_t& value) -> std::variant<value_t, children_t> {
+						return std::variant<value_t, children_t>(std::in_place_type<value_t>, value.get_value_commitment());
 					},
 					[] (const children_t& children) -> std::variant<value_t, children_t>
 					{
@@ -285,13 +285,11 @@ public:
     	return nullptr;
     }
 
-
     node_t* get_child(uint8_t bb)
     {
     	utils::print_assert(std::holds_alternative<children_t>(children_or_value), "get_child on a value node");
     	return std::get<children_t>(children_or_value)[bb].load(std::memory_order_acquire);
     }
-
 
     const node_t* get_child(uint8_t bb) const
     {
