@@ -138,6 +138,8 @@ struct EphemeralTrieNodeAllocator : private utils::NonMovableOrCopyable
 
     using buffer_t = std::array<ObjType, BUF_SIZE>;
 
+    using object_t = ObjType;
+
     using value_t = ValueType;//typename ObjType::value_t;
 
     using value_buffer_t = std::array<value_t, BUF_SIZE>;
@@ -248,7 +250,7 @@ struct EphemeralTrieNodeAllocator : private utils::NonMovableOrCopyable
 template<typename allocator_t>
 struct ApplyableNodeReference
 {
-    using ValueType = typename allocator_t::value_t;
+    using ValueType = typename allocator_t::object_t;
 
     ValueType* ptr;
     allocator_t& allocator;
@@ -288,7 +290,7 @@ struct ApplyableNodeReference
 template<typename allocator_t>
 struct ConstApplyableNodeReference
 {
-    using ValueType = typename allocator_t::value_t;
+    using ValueType = typename allocator_t::object_t;
 
     const ValueType* ptr;
     const allocator_t& allocator;
