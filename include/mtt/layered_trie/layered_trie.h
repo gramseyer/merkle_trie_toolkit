@@ -248,10 +248,13 @@ public:
     		{
     			active_children.fetch_add(1, std::memory_order_release);
     		}
+
+    		// not one if-else ladder
     		if (new_ptr == nullptr)
     		{
     			active_children.fetch_sub(1, std::memory_order_release);
-    		} else
+    		} 
+    		else
     		{
     			new_ptr -> commit_node();
     		}
@@ -312,85 +315,8 @@ public:
     	return prefix_len;
     }
 
-    metadata_t const&
-    compute_hash(std::vector<uint8_t>& digest_bytes)
-    {
-    	if (metadata.hash_valid) {
-    		return metadata;
-    	}
-    	auto hash_bytes = [] (std::vector<uint8_t>& bytes, metadata_t& meta) {
-    		if (crypto_generichash(
-	        	meta.hash.data(),
-	        	meta.hash.size(),
-	        	bytes.data(),
-	        	bytes.size(),
-	       		NULL,
-	      		0) != 0)
-    		{
-        		throw std::runtime_error("error from crypto_generichash");
-    		}
-    		meta.hash_valid = true;
-    	};
-
-    	if (is_leaf())
-    	{
-    		digest_bytes.clear();
-    		utils::print_assert(std::get<value_t>(children_or_value).is_active(), "compute hash on inactive node");
-
-    		write_node_header(digest_bytes, prefix, prefix_len);
-    		auto commitment = std::get<value_t>(children_or_value).get_value_commitment();
-
-    		commitment.write_to(digest_bytes);
-
-    		metadata.read(commitment);
-    		metadata.size = 1;
-    		hash_bytes(digest_bytes, metadata);
-
-    		return metadata;
-    	}
-
-    	uint8_t found_active_children = 0;
-    	TrieBitVector bv;
-
-    	for (uint8_t bb = 0; bb < 16; bb++)
-    	{
-    		auto* ptr = get_child(bb);
-
-    		if (ptr == nullptr || ptr -> get_num_active_children() == 0)
-    		{
-    			continue;
-    		}
-    		found_active_children ++;
-    		bv.add(bb);
-    		ptr -> compute_hash(digest_bytes);
-    	}
-    	digest_bytes.clear();
-
-    	write_node_header(digest_bytes, prefix, prefix_len);
-    	bv.write(digest_bytes);
-
-    	for (uint8_t bb = 0; bb < 16; bb++)
-    	{
-    		auto* ptr = get_child(bb);
-
-    		if (ptr == nullptr || ptr -> get_num_active_children() == 0)
-    		{
-    			continue;
-    		}
-    		if (found_active_children == 1)
-    		{
-    			metadata = ptr -> compute_hash(digest_bytes);
-    			utils::print_assert(metadata.hash_valid, "must get valid hash from child");
-    			return metadata;
-    		}
-    		auto const& child_meta = ptr -> compute_hash(digest_bytes);
-    		metadata += child_meta;
-    		child_meta.write_to(digest_bytes);
-    	}
-
-    	hash_bytes(digest_bytes, metadata);
-    	return metadata;
-    } 
+    auto const&
+    compute_hash(std::vector<uint8_t>& digest_bytes);
 
     // TESTING ONLY
 
@@ -950,6 +876,86 @@ LTN_DECL::insert(
 	}
 }
 
+LTN_TEMPLATE
+auto const&
+LTN_DECL::compute_hash(std::vector<uint8_t>& digest_bytes)
+{
+	if (metadata.hash_valid) {
+		return metadata;
+	}
+	auto hash_bytes = [] (std::vector<uint8_t>& bytes, metadata_t& meta) {
+		if (crypto_generichash(
+        	meta.hash.data(),
+        	meta.hash.size(),
+        	bytes.data(),
+        	bytes.size(),
+       		NULL,
+      		0) != 0)
+		{
+    		throw std::runtime_error("error from crypto_generichash");
+		}
+		meta.hash_valid = true;
+	};
+
+	if (is_leaf())
+	{
+		digest_bytes.clear();
+		utils::print_assert(std::get<value_t>(children_or_value).is_active(), "compute hash on inactive node");
+
+		write_node_header(digest_bytes, prefix, prefix_len);
+		auto commitment = std::get<value_t>(children_or_value).get_value_commitment();
+
+		commitment.write_to(digest_bytes);
+
+		metadata.read(commitment);
+		metadata.size = 1;
+		hash_bytes(digest_bytes, metadata);
+
+		return metadata;
+	}
+
+	uint8_t found_active_children = 0;
+	TrieBitVector bv;
+
+	for (uint8_t bb = 0; bb < 16; bb++)
+	{
+		auto* ptr = get_child(bb);
+
+		if (ptr == nullptr || ptr -> get_num_active_children() == 0)
+		{
+			continue;
+		}
+		found_active_children ++;
+		bv.add(bb);
+		ptr -> compute_hash(digest_bytes);
+	}
+	digest_bytes.clear();
+
+	write_node_header(digest_bytes, prefix, prefix_len);
+	bv.write(digest_bytes);
+
+	for (uint8_t bb = 0; bb < 16; bb++)
+	{
+		auto* ptr = get_child(bb);
+
+		if (ptr == nullptr || ptr -> get_num_active_children() == 0)
+		{
+			continue;
+		}
+		if (found_active_children == 1)
+		{
+			metadata = ptr -> compute_hash(digest_bytes);
+			utils::print_assert(metadata.hash_valid, "must get valid hash from child");
+			return metadata;
+		}
+		auto const& child_meta = ptr -> compute_hash(digest_bytes);
+		metadata += child_meta;
+		child_meta.write_to(digest_bytes);
+	}
+
+	hash_bytes(digest_bytes, metadata);
+	return metadata;
+}
 
 /*
 
