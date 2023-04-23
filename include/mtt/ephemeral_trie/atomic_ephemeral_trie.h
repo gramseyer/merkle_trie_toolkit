@@ -40,12 +40,6 @@ class AtomicChildrenMap : private utils::NonMovableOrCopyable
         bool res = children[bb].compare_exchange_weak(
             expected, desired, std::memory_order_acq_rel);
 
-        /*std::printf(
-            "tried to swap on %p res %lu desired %llx current value %llx \n",
-            this,
-            res,
-            desired,
-            expected); */
         return res;
     }
 
@@ -91,7 +85,7 @@ class alignas(64) AtomicTrieNode : private utils::NonMovableOrCopyable
     using prefix_t = PrefixT;
     using node_t = AtomicTrieNode<ValueType, prefix_t, LOG_BUFSIZE>;
     using allocator_t = EphemeralTrieNodeAllocator<node_t, ValueType, LOG_BUFSIZE>;
-    using allocation_context_t = allocator_t::context_t;
+    using allocation_context_t = typename allocator_t::context_t;
     using value_t = ValueType;
     using ptr_t = uint32_t;
 
@@ -312,8 +306,8 @@ class AtomicTrie
   public:
     using prefix_t = PrefixT;
     using node_t = AtomicTrieNode<ValueType, prefix_t, LOG_BUFSIZE>;
-    using allocator_t = node_t::allocator_t;//EphemeralTrieNodeAllocator<node_t, LOG_BUFSIZE>;
-    using allocation_context_t = allocator_t::context_t;
+    using allocator_t = typename node_t::allocator_t;//EphemeralTrieNodeAllocator<node_t, LOG_BUFSIZE>;
+    using allocation_context_t = typename allocator_t::context_t;
     using value_t = ValueType;
 
   private:
@@ -460,11 +454,11 @@ class AtomicTrie
 template<typename main_trie_t> //typename ValueType, typename prefix_t, uint8_t LOG_BUFSIZE>
 class AtomicTrieReference : public utils::NonMovableOrCopyable
 {
-    using node_t = main_trie_t::node_t;//AtomicTrieNode<ValueType, prefix_t, LOG_BUFSIZE>;
-    using allocation_context_t = node_t::allocation_context_t;
+    using node_t = typename main_trie_t::node_t;//AtomicTrieNode<ValueType, prefix_t, LOG_BUFSIZE>;
+    using allocation_context_t = typename node_t::allocation_context_t;
 
-    using value_t = node_t::value_t;
-    using prefix_t = node_t::prefix_t;
+    using value_t = typename node_t::value_t;
+    using prefix_t = typename node_t::prefix_t;
 
     main_trie_t& main_trie;
 
@@ -665,7 +659,7 @@ ATN_DECL :: accumulate_values_parallel_worker(VectorType& output,
         }
         auto& ref = allocator.get_object(ptr);
         ref.template accumulate_values_parallel_worker<VectorType, get_fn>(output, vector_offset, allocator);
-        vector_offset == (ptr_and_sz & 0xFFFF'FFFF);
+        vector_offset += (ptr_and_sz & 0xFFFF'FFFF);
     }
 }
 
