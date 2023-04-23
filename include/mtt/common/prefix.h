@@ -286,11 +286,6 @@ public:
 
 		out.insert(out.end(), ptr, ptr + bytes_to_write);
 		out.back() &= prefix_len.get_truncate_mask();
-
-
-	//	utils::append_unsigned_big_endian(out, prefix);
-	//	uint8_t extra_bytes = 8 - prefix.num_prefix_bytes();
-	//	out.erase(out.end() - extra_bytes, out.end());
 	}
 
 
@@ -530,9 +525,6 @@ static void write_node_header(std::vector<unsigned char>& buf, prefix_t const& p
 	utils::append_unsigned_big_endian(buf, prefix_len_bits.len);
 
 	prefix.write_bytes_to(buf, prefix_len_bits);
-
-	//auto prefix_bytes = prefix.get_bytes(prefix_len_bits);
-	//buf.insert(buf.end(), prefix_bytes.begin(), prefix_bytes.end());
 }
 
 } /* trie */
