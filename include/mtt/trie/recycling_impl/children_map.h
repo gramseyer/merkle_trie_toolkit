@@ -327,7 +327,7 @@ class RecyclingChildrenMap
         }
 
         template<bool other_const>
-        bool operator==(const iterator_<other_const>& other)
+        bool operator==(const iterator_<other_const>& other) const
         {
             return bv == other.bv;
         }

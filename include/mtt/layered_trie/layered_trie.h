@@ -30,6 +30,8 @@ template<typename... Ts>
 struct overloaded : Ts... { 
 	using Ts::operator()...;
 };
+template<class... Ts>
+overloaded(Ts...) -> overloaded<Ts...>;
 
 }
 
@@ -167,6 +169,13 @@ public:
 	 * than the layer at which the node is superseded.
 	 * (I.e. don't free node at layer K while actively processing
 	 * layer K+1)
+	 * 
+	 * One edge case:
+	 * In the case of garbage collection, all nodes in some subgraph are superseded
+	 * in the same layer.  There is still, for each of these nodes, a node that is
+	 * responsible for garbage collecting it -- each is a child of another node,
+	 * the node nearest the root has some active or superseded int he same layer node (with 
+	 * regular freeing guarantees), and each node in the subgraph is superseded at the same layer.
 	 */
 	~LayeredTrieNode()
 	{
@@ -739,7 +748,7 @@ public:
 			const_cast<const AtomicMerkleTrie<prefix_t, value_t, TLCACHE_SIZE>*>(this) -> get_value(query));
 	} */
 
-#define LTN_TEMPLATE template<typename prefix_t, typename value_t, LayeredTrieNodeMetadata metadata_t>
+#define LTN_TEMPLATE template<typename prefix_t, ValueType value_t, LayeredTrieNodeMetadata metadata_t>
 #define LTN_DECL LayeredTrieNode<prefix_t, value_t, metadata_t>
 
 LTN_TEMPLATE

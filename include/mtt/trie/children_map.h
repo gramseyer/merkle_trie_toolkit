@@ -38,7 +38,7 @@ class FixedChildrenMap
     constexpr static unsigned int BRANCH_BITS = 4;
     constexpr static unsigned int NUM_CHILDREN = 1 << BRANCH_BITS;
 
-    using underlying_ptr_t = trie_ptr_t::pointer;
+    using underlying_ptr_t = typename trie_ptr_t::pointer;
     union
     {
         underlying_ptr_t map[NUM_CHILDREN];
@@ -210,7 +210,7 @@ class FixedChildrenMap
         }
 
         template<bool other_const>
-        bool operator==(const iterator_<other_const>& other)
+        bool operator==(const iterator_<other_const>& other) const
         {
             return bv == other.bv;
         }

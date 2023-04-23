@@ -248,7 +248,7 @@ struct EphemeralTrieNodeAllocator : private utils::NonMovableOrCopyable
 template<typename allocator_t>
 struct ApplyableNodeReference
 {
-    using ValueType = allocator_t::value_t;
+    using ValueType = typename allocator_t::value_t;
 
     ValueType* ptr;
     allocator_t& allocator;
@@ -288,7 +288,7 @@ struct ApplyableNodeReference
 template<typename allocator_t>
 struct ConstApplyableNodeReference
 {
-    using ValueType = allocator_t::value_t;
+    using ValueType = typename allocator_t::value_t;
 
     const ValueType* ptr;
     const allocator_t& allocator;

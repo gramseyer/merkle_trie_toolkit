@@ -16,7 +16,7 @@ namespace trie
 template<typename TrieT>
 struct EphemeralTrieAccumulateValuesRange
 {
-    using allocator_t = TrieT::allocator_t;
+    using allocator_t = typename TrieT::allocator_t;
 
     const uint32_t GRAIN_SIZE;
 
@@ -115,7 +115,7 @@ struct EphemeralTrieAccumulateValuesRange
 template<typename TrieT>
 struct EphemeralTrieApplyRange
 {
-    using allocator_t = TrieT::allocator_t;
+    using allocator_t = typename TrieT::allocator_t;
 
     std::vector<uint64_t> work_list;
 
@@ -192,7 +192,7 @@ class EphemeralTrieHashRange
 {
 
     uint32_t num_children;
-    using allocator_t = TrieT::allocator_t;//RecyclingTrieNodeAllocator<TrieT>;
+    using allocator_t = typename TrieT::allocator_t;//RecyclingTrieNodeAllocator<TrieT>;
     //using ptr_t = TrieT::ptr_t;
 
     allocator_t& allocator;

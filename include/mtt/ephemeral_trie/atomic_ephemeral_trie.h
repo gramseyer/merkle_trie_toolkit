@@ -754,7 +754,7 @@ ATN_DECL :: compute_hash(allocator_t& allocator, std::vector<uint8_t>& digest_bu
 
 ATN_TEMPLATE
 const 
-ATN_DECL::value_t*
+typename ATN_DECL::value_t*
 ATN_DECL::get_value(const prefix_t& query_prefix, allocator_t const& allocator) const
 {
     auto match_len = get_prefix_match_len(query_prefix);

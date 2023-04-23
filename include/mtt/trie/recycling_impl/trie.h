@@ -45,7 +45,7 @@ struct TrieNodeContents
 {
     using prefix_t = typename NodeType::prefix_t;
     using children_map_t = RecyclingChildrenMap<ValueType, NodeType>;
-    using ptr_t = children_map_t::ptr_t;
+    using ptr_t = typename children_map_t::ptr_t;
 
     children_map_t children;
     prefix_t prefix;
@@ -75,10 +75,10 @@ class alignas(64) RecyclingTrieNode : private utils::NonMovableOrCopyable
     using prefix_t = PrefixT;
     using node_t = RecyclingTrieNode<ValueType, prefix_t, ExtraMetadata>;
     using children_map_t = RecyclingChildrenMap<ValueType, node_t>;
-    using ptr_t = children_map_t::ptr_t;
+    using ptr_t = typename children_map_t::ptr_t;
     using hash_t = Hash;
     using allocator_t = EphemeralTrieNodeAllocator<node_t, ValueType, 19>;
-    using allocation_context_t = allocator_t::context_t;// EphemeralTrieNodeAllocationContext<node_t, 19>; //
+    using allocation_context_t = typename allocator_t::context_t;// EphemeralTrieNodeAllocationContext<node_t, 19>; //
     using metadata_t = RecyclingTrieNodeMetadata<ExtraMetadata>;
     using contents_t = TrieNodeContents<ValueType, node_t, metadata_t>;
     using value_t = ValueType;
@@ -313,9 +313,9 @@ class alignas(64) RecyclingTrieNode : private utils::NonMovableOrCopyable
 
     // not threadsafe
     template<typename InsertFn, typename InsertedValueType>
-    metadata_t insert(prefix_t const& key,
-                      InsertedValueType&& leaf_value,
-                      allocation_context_t& allocator);
+    auto insert(prefix_t const& key,
+                InsertedValueType&& leaf_value,
+                allocation_context_t& allocator);
 
     // not threadsafe
     template<typename... ApplyToValueBeforeHashFn>
@@ -557,11 +557,11 @@ template<typename ValueType, typename PrefixT, typename ExtraMetadata>
 class SerialRecyclingTrie
 {
     using node_t = RecyclingTrieNode<ValueType, PrefixT, ExtraMetadata>;
-    using allocator_t = node_t::allocator_t;
-    using allocation_context_t = node_t::allocation_context_t;
+    using allocator_t = typename node_t::allocator_t;
+    using allocation_context_t = typename node_t::allocation_context_t;
 
     allocation_context_t allocation_context;
-    using ptr_t = node_t::ptr_t;
+    using ptr_t = typename node_t::ptr_t;
     ptr_t root;
 
     using main_trie_t = RecyclingTrie<ValueType, PrefixT, ExtraMetadata>;
@@ -647,14 +647,14 @@ class RecyclingTrie
 
   public:
     using node_t = RecyclingTrieNode<ValueType, PrefixT, ExtraMetadata>;
-    using ptr_t = node_t::ptr_t;
+    using ptr_t = typename node_t::ptr_t;
     using prefix_t = PrefixT;
     using serial_trie_t
         = SerialRecyclingTrie<ValueType, PrefixT, ExtraMetadata>;
     using metadata_t = RecyclingTrieNodeMetadata<ExtraMetadata>;
 
   private:
-    using allocator_t = node_t::allocator_t;
+    using allocator_t = typename node_t::allocator_t;
 
     allocator_t allocator;//RecyclingTrieNodeAllocator<node_t> allocator;
 
@@ -916,7 +916,7 @@ ATN_DECL ::size() const
 
 ATN_TEMPLATE
 template<typename InsertFn, typename InsertedValueType>
-ATN_DECL::metadata_t
+auto
 ATN_DECL::insert(prefix_t const& key,
                  InsertedValueType&& leaf_value,
                  allocation_context_t& allocator)
@@ -1172,7 +1172,7 @@ ATN_DECL::compute_hash(const allocator_t& allocator,
 
 ATN_TEMPLATE
 template<typename MergeFn>
-ATN_DECL::metadata_t
+typename ATN_DECL::metadata_t
 ATN_DECL::merge_in(ptr_t node, allocation_context_t& allocator)
 {
 

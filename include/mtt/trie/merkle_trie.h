@@ -49,6 +49,9 @@ virtual addresses).
 #include <unordered_set>
 #include <vector>
 
+#include <tbb/parallel_for.h>
+#include <tbb/parallel_reduce.h>
+
 namespace trie {
 
 /*! Node within a merkle trie. */
@@ -279,12 +282,12 @@ class TrieNode
         metadata.unsafe_store(base_metadata);
     }
 
-    void prefetch_full_write() const
+ /*   void prefetch_full_write() const
     {
         for (size_t i = 0; i < sizeof(TrieNode); i += 64) {
             __builtin_prefetch(static_cast<const void*>(this) + i, 1, 2);
         }
-    }
+    } */
 
     void print_offsets()
     {

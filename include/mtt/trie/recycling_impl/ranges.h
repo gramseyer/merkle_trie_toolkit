@@ -23,8 +23,8 @@ namespace trie {
 template<typename TrieT, typename AccumulatorFn, unsigned int GRAIN_SIZE = 1000>
 struct RecyclingAccumulateValuesRange
 {
-    using ptr_t = TrieT::ptr_t;
-    using allocator_t = TrieT::allocator_t;
+    using ptr_t = typename TrieT::ptr_t;
+    using allocator_t = typename TrieT::allocator_t;
 
     //! Nodes for which this range is responsible.
     //! The lists of values underneath these pointers
@@ -104,7 +104,7 @@ struct RecyclingAccumulateValuesRange
 template<typename TrieT, unsigned int GRAIN_SIZE = 1000>
 struct RecyclingApplyRange
 {
-    using allocator_t = TrieT::allocator_t;
+    using allocator_t = typename TrieT::allocator_t;
 
     std::vector<const TrieT*> work_list;
 
@@ -172,11 +172,11 @@ class SerialRecyclingTrie;
 template<typename TrieT, uint32_t CACHE_SIZE>
 struct RecyclingBatchMergeRange
 {
-    using ptr_t = TrieT::ptr_t;
+    using ptr_t = typename TrieT::ptr_t;
     using map_value_t = std::vector<ptr_t>;
-    using allocator_t = TrieT::allocator_t; // RecyclingTrieNodeAllocator<TrieT>;
-    using prefix_t = TrieT::prefix_t;
-    using metadata_t = TrieT::metadata_t;
+    using allocator_t = typename TrieT::allocator_t; // RecyclingTrieNodeAllocator<TrieT>;
+    using prefix_t = typename TrieT::prefix_t;
+    using metadata_t = typename TrieT::metadata_t;
     using context_cache_t
         = utils::ThreadlocalCache<typename TrieT::main_trie_t::serial_trie_t, CACHE_SIZE>;
 

@@ -62,6 +62,9 @@ struct PrefixLenBits {
 	constexpr unsigned int bytes_to_write_len() {
 		return 2;
 	}
+
+	constexpr PrefixLenBits(uint16_t len) : len(len) {}
+	constexpr PrefixLenBits() : len(0) {}
 };
 
 namespace detail {
