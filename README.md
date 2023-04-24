@@ -4,11 +4,49 @@ A C++20 header-only merkle trie library.  Keys are fixed-length.
 
 The implementation is optimized around parallel execution of batch operations.
 
-## /trie
+This project should be includeable as a submodule, importing the makefile fragment.
+There is also a standalone autotools build script.
+However, this project relies on gramseyer/utility.git, which could be
+included as a submodule here but is more naturally 
+added to a project via its out makefile fragment
+(see scslab/smart-contract-scalability.git for an example).
 
-Merkle trie implementation and associated helper objects.
+# Project Structure
 
-### /trie/recycling_impl
+## snapshot_trie/
+
+Trie designed around periodic batch modifications.
+Operations are atomic and threadsafe;
+that is, insertions can be processed concurrently.
+Batch modifications should generally not be done concurrently with
+insertions.
+
+The general pattern (as e.g. used in scslab/smart-contract-scalability.git)
+is to build, per each batch of modifications, an `ephemeral_trie` with the same keyspace 
+that logs which keys need to be updated, and then using the ephemeral trie to 
+execute a parallel job over the main trie.
+
+Replaces `trie/`.
+
+## ephemeral_trie/
+
+Trie with limited functionality using a custom, recycling memory allocator.
+Designed to be thrown away and recreated after each batch of operations on a
+`snapshot_trie/` or `layered_trie/`.
+
+## layered_trie/
+
+Experimental copy-on-write version of `snapshot_trie/`.
+
+## trie/
+
+Merkle trie designed around insertions, deletions, and merge operations.
+General use case is one where each thread accumulates its own subtrie locally,
+and then tries are merged together in a batch.
+
+Generally not as good performance as `snapshot_trie/`
+
+### trie/recycling_impl
 
 Subset of merkle trie methods using a custom allocator.  
 This implementation is designed around batch operations.
@@ -31,6 +69,8 @@ An alternate approach would be to make every node log an 8-byte pointer to a nor
 block of 16 nodes.  The implementation in merkle_trie.h uses a continuously allocated block of 16 pointers (stored within the
 trie node), so each node is ultimately 3 or 4 cache lines (depending on the size of the value type).
 
+Replaced by `ephemeral_trie/`.  The batch merge operations tend to be less performant than desired.
+
 # Dependencies
 
 Depends on gramseyer/utility.git, which could be included as a submodule or installed locally
@@ -42,8 +82,9 @@ Depends on gramseyer/utility.git, which could be included as a submodule or inst
 
 - One should be able to build and run tests with `make test`.
 
-- Trie operations are safe to use concurrently, unless the locking mechanisms are turned off
-  (methods with names \_nolocks do not use locking).
+- Trie operations are safe to use concurrently
+  (except for those in `trie/`, when the locking mechanisms are turned off
+  --methods with names \_nolocks do not use locking).
 
 - Will update documentation if requested.  
 

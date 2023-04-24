@@ -30,6 +30,8 @@ template<typename... Ts>
 struct overloaded : Ts... { 
 	using Ts::operator()...;
 };
+
+// needed for clang but not gcc
 template<class... Ts>
 overloaded(Ts...) -> overloaded<Ts...>;
 

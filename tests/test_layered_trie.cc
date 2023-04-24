@@ -548,6 +548,8 @@ TEST_CASE("hash counter trie generalcase, no metadata", "[layered]")
 				}
 			}
 			trie.bump_active_layer();
+			trie.bump_active_layer();
+			trie.bump_active_layer();
 			l2hash = trie.get_layer(2).open_access_reference().compute_hash();
 			REQUIRE(l1hash != l2hash);
 		} 
