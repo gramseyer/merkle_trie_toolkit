@@ -672,7 +672,19 @@ public:
 
 		freeable_lowerbound = std::max(layer, freeable_lowerbound);
 
-		// cannot free active layer or the layer immediately below it
+		/**
+		 * Cannot free active layer or the layer immediately below it
+		 *
+		 * This crucially avoids (1) the ABA problem and (2) races between
+		 * threads reading some superseded node and a thread deleting it.
+		 * 
+		 * Specifically, no thread doing garbage collection
+		 * can delete a node that is superseded in the current round.
+		 * The root node being GC'd starts at superseded level of N-1
+		 * (since we start with something below N-2)
+		 * and everything superseded in the current round is superseded
+		 * at N.
+		 */ 
 		uint64_t actually_to_be_freed = std::min(freeable_lowerbound, active_layer - 2);
 
 		for (auto i = roots.begin(); i != roots.end();)
