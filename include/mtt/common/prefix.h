@@ -53,11 +53,9 @@ struct PrefixLenBits {
 
 	bool operator==(const PrefixLenBits& other) const = default;
 
-	PrefixLenBits operator+(const uint16_t other_bits) const {
-		PrefixLenBits out;
-		out.len = len + other_bits;
-		return out;
-	}
+	constexpr PrefixLenBits operator+(const uint16_t other_bits) const {
+		return PrefixLenBits { static_cast<uint16_t>(len + other_bits) };
+	} 
 
 	constexpr static unsigned int bytes_to_write_len() {
 		return 2;
@@ -180,7 +178,7 @@ public:
 			}
 		}
 		uint16_t res_final = res - res % BRANCH_BITS;
-		return std::min<PrefixLenBits>( { res_final, /*PrefixLenBits{res_final},*/ self_len, other_len} );
+		return std::min<PrefixLenBits>( { res_final, self_len, other_len} );
 	}
 
 	//! get the BRANCH_BITS bits that follow a specific length point.
@@ -299,21 +297,6 @@ public:
 		out.back() &= prefix_len.get_truncate_mask();
 	}
 
-/*
-	//! Return a vector of bytes with the prefix's contents.
-	//! Note: results are in little-endian order.  Should not be used externally.
-	std::vector<unsigned char> get_bytes(const PrefixLenBits prefix_len) const {
-		std::vector<unsigned char> bytes_out;
-
-		const unsigned char* ptr 
-			= reinterpret_cast<const unsigned char*>(data.data());
-
-		bytes_out.insert(
-			bytes_out.end(), ptr, ptr + prefix_len.num_prefix_bytes());
-
-		return bytes_out;
-	} */
-
 	constexpr static size_t size_bytes() {
 		return MAX_LEN_BYTES;
 	}
@@ -343,7 +326,7 @@ public:
 
 	bool operator==(const ByteArrayPrefix& other) const = default;
 
-	std::string to_string(const PrefixLenBits len) const {
+	std::string to_string(const PrefixLenBits& len) const {
 		
 		auto bytes = get_bytes_array<std::array<uint8_t, MAX_LEN_BYTES>>();
 		auto str = utils::array_to_str(bytes.data(), len.num_prefix_bytes());
@@ -489,15 +472,6 @@ public:
 		return data_ptr[i];
 	}
 
-	// should not be used externally. returns results in little-endian order.
-	/*std::vector<uint8_t> get_bytes(PrefixLenBits const& prefix_len_bits) const {
-		std::vector<uint8_t> out;
-		auto full = get_bytes_array<std::array<uint8_t, MAX_LEN_BYTES>>();
-		auto num_bytes = prefix_len_bits.num_prefix_bytes();
-		out.insert(out.end(), full.begin(), full.begin() + num_bytes);
-		return out;
-	} */
-
 	uint64_t uint64() const {
 		return prefix;
 	}
@@ -530,7 +504,7 @@ public:
 };
 
 template<typename prefix_t>
-static void write_node_header(std::vector<unsigned char>& buf, prefix_t const& prefix, const PrefixLenBits prefix_len_bits) {
+static void write_node_header(std::vector<unsigned char>& buf, prefix_t const& prefix, const PrefixLenBits& prefix_len_bits) {
 
 	utils::append_unsigned_big_endian(buf, prefix_len_bits.len);
 

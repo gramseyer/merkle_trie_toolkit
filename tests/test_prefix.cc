@@ -148,11 +148,11 @@ TEST_CASE("test bytearray compare short", "[prefix]")
 
 TEST_CASE("uint64_truncate", "[prefix]")
 {
-	uint64_t query = 0x12345678'0000'0000;
+	uint64_t query = 0x1234'5678'0000'0000;
 
 	UInt64Prefix key_buf{query};
 
-	uint64_t truncated = 0x12340000'0000'0000;
+	uint64_t truncated = 0x1234'0000'0000'0000;
 
 	UInt64Prefix key_buf2{truncated};
 
@@ -160,7 +160,7 @@ TEST_CASE("uint64_truncate", "[prefix]")
 
 	REQUIRE(key_buf == key_buf2);
 
-	truncated = 0x12300000'0000'0000;
+	truncated = 0x1230'0000'0000'0000;
 	key_buf2 = UInt64Prefix{truncated};
 	key_buf.truncate(PrefixLenBits{12});
 	REQUIRE(key_buf == key_buf2);
