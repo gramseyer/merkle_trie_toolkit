@@ -59,7 +59,7 @@ struct PrefixLenBits {
 		return out;
 	}
 
-	constexpr unsigned int bytes_to_write_len() {
+	constexpr static unsigned int bytes_to_write_len() {
 		return 2;
 	}
 
@@ -135,7 +135,7 @@ class ByteArrayPrefix {
 	constexpr static uint16_t MAX_LEN_BITS = 8 * MAX_LEN_BYTES;
 
 	constexpr static uint64_t BRANCH_MASK 
-		= (((uint64_t)1) << (BRANCH_BITS)) - 1;
+		= (static_cast<uint64_t>(1) << (BRANCH_BITS)) - 1;
 
 public:
 
@@ -151,7 +151,6 @@ public:
 			
 			static_assert(sizeof(ArrayLike) == MAX_LEN_BYTES);
 
-			data.fill(0);
 			auto* ptr = reinterpret_cast<unsigned char*>(data.data());
 			std::memcpy(ptr, input.data(), MAX_LEN_BYTES);
 	}
@@ -181,40 +180,49 @@ public:
 			}
 		}
 		uint16_t res_final = res - res % BRANCH_BITS;
-		return std::min( { PrefixLenBits{res_final}, self_len, other_len} );
+		return std::min<PrefixLenBits>( { res_final, /*PrefixLenBits{res_final},*/ self_len, other_len} );
 	}
 
 	//! get the BRANCH_BITS bits that follow a specific length point.
 	//! I.e. if prefix is 0xABCD, get_branch_bits(4) = B
-	unsigned char get_branch_bits(const PrefixLenBits branch_point) const {
+	uint8_t get_branch_bits(const PrefixLenBits& branch_point) const {
 		if (branch_point.len >= MAX_LEN_BITS) {
 			throw std::runtime_error("can't branch beyond end");
 		}
 
 		uint16_t word_idx = branch_point.len / 64;
 
-		uint16_t byte_offset = (branch_point.len % 64) / 8;
+		uint16_t byte_offset = branch_point.len & 0x0038;//0b0000'0000'0011'1000;
 
-		uint8_t byte = (data[word_idx] >> (8 * byte_offset)) & 0xFF;
+		//uint16_t byte_offset = (branch_point.len % 64) / 8;
+
+		uint8_t byte = (data[word_idx] >> byte_offset /*(8 * byte_offset) */) & 0xFF;
 
 		return (branch_point.len % 8 == 0 ? byte >> 4 : byte) & 0x0F;
 	}
 
 	//! Truncate a prefix to a specific length.  Bits beyond truncate_point
 	//! are set to 0.
-	void truncate(const PrefixLenBits truncate_point) {
+	void truncate(const PrefixLenBits& truncate_point) {
 		if (truncate_point.len >= MAX_LEN_BITS) {
 			throw std::runtime_error("can't truncate beyond end");
 		}
 
 		uint16_t word_idx = truncate_point.len / 64;
-		uint16_t byte_offset = (truncate_point.len % 64) / 8;
-		uint16_t word_offset = 8 * byte_offset;
+		//uint16_t byte_offset = (truncate_point.len % 64) / 8;
+		//uint16_t word_offset = 8 * byte_offset;
+		uint16_t word_offset = truncate_point.len & 0x0038;
 
-		uint64_t truncate_mask = (((uint64_t)1) << word_offset) - 1;
+/*		constexpr uint64_t truncate_base = 0xFFFF'FFFF'FFFF'FF0F;
+		uint64_t truncate_mask3 = truncate_base >> (((truncate_point.len & 0x4) == 0 )? 8 : 0);
+		truncate_mask3 = ~(truncate_mask3 << (word_offset));
+*/
+
+		uint64_t truncate_mask = (static_cast<uint64_t>(1) << word_offset) - 1;
 		if (truncate_point.len % 8 != 0) {
-			truncate_mask |= ((uint64_t)0xF0) <<word_offset;
+			truncate_mask |= (static_cast<uint64_t>(0xF0) << word_offset);
 		}
+
 		data[word_idx] &= truncate_mask;
 		for (size_t i = word_idx + 1; i < WORDS; i++) {
 			data[i] = 0;
@@ -291,7 +299,7 @@ public:
 		out.back() &= prefix_len.get_truncate_mask();
 	}
 
-
+/*
 	//! Return a vector of bytes with the prefix's contents.
 	//! Note: results are in little-endian order.  Should not be used externally.
 	std::vector<unsigned char> get_bytes(const PrefixLenBits prefix_len) const {
@@ -304,7 +312,7 @@ public:
 			bytes_out.end(), ptr, ptr + prefix_len.num_prefix_bytes());
 
 		return bytes_out;
-	}
+	} */
 
 	constexpr static size_t size_bytes() {
 		return MAX_LEN_BYTES;
@@ -317,7 +325,6 @@ public:
 	std::strong_ordering operator<=>(const ByteArrayPrefix& other) const {
 
 		if (&other == this) return std::strong_ordering::equal;
-
 
 		//TODO try the other candidate(compare word by word, in loop);
 
@@ -338,7 +345,7 @@ public:
 
 	std::string to_string(const PrefixLenBits len) const {
 		
-		auto bytes = get_bytes(len);
+		auto bytes = get_bytes_array<std::array<uint8_t, MAX_LEN_BYTES>>();
 		auto str = utils::array_to_str(bytes.data(), len.num_prefix_bytes());
 		if (len.len % 8 == 4)
 		{
@@ -396,7 +403,7 @@ public:
 	operator==(const UInt64Prefix& other) const = default;
 
 	//! Get the bits of the prefix just beyond branch_point
-	unsigned char get_branch_bits(const PrefixLenBits branch_point) const {
+	uint8_t get_branch_bits(const PrefixLenBits& branch_point) const {
 		if (branch_point.len >= MAX_LEN_BITS) {
 			std::printf("Bad branch bits was %u\n", branch_point.len);
 			throw std::runtime_error("can't branch beyond end");
@@ -425,7 +432,7 @@ public:
 	}
 
 	//! Truncate the prefix to a defined length
-	void truncate(const PrefixLenBits truncate_point) {
+	void truncate(const PrefixLenBits& truncate_point) {
 		if (truncate_point.len == 0) {
 			prefix = 0;
 		} else {
@@ -483,13 +490,13 @@ public:
 	}
 
 	// should not be used externally. returns results in little-endian order.
-	std::vector<uint8_t> get_bytes(PrefixLenBits const& prefix_len_bits) const {
+	/*std::vector<uint8_t> get_bytes(PrefixLenBits const& prefix_len_bits) const {
 		std::vector<uint8_t> out;
 		auto full = get_bytes_array<std::array<uint8_t, MAX_LEN_BYTES>>();
 		auto num_bytes = prefix_len_bits.num_prefix_bytes();
 		out.insert(out.end(), full.begin(), full.begin() + num_bytes);
 		return out;
-	}
+	} */
 
 	uint64_t uint64() const {
 		return prefix;
@@ -500,7 +507,7 @@ public:
 	}
 
 	std::string to_string(const PrefixLenBits& len) const {
-		auto bytes = get_bytes(len);
+		auto bytes = get_bytes_array<std::array<uint8_t, MAX_LEN_BYTES>>();
 		auto str = utils::array_to_str(bytes.data(), len.num_prefix_bytes());
 		if (len.len % 8 == 4)
 		{

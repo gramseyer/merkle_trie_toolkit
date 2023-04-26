@@ -107,6 +107,45 @@ TEST_CASE("test_byte_truncate", "[prefix]")
 	REQUIRE(key_buf == key_buf2);
 }
 
+TEST_CASE("test uint64 compare", "[prefix]")
+{
+	auto check_lt = [] (uint64_t a, uint64_t b)
+	{
+		REQUIRE(UInt64Prefix{a} < UInt64Prefix{b});
+	};
+
+	check_lt(0x1234'0000'0000'0000, 0x1234'0000'0000'0001);
+	check_lt(0x1234'0000'0000'0000, 0x1235'0000'0000'0000);
+	check_lt(0x1234'0000'0000'0000, 0x1244'0000'0000'0000);
+	check_lt(0x1234'0000'0000'0000, 0x1234'1000'0000'0000);
+	check_lt(0x1234'0000'0000'0000, 0x1234'0100'0000'0000);
+	check_lt(0x1234'0000'0000'0000, 0x2134'0000'0000'0000);
+	check_lt(0x1234'0000'0000'0000, 0x1300'0000'0000'0000);
+}
+
+TEST_CASE("test bytearray compare short", "[prefix]")
+{
+	auto check_lt = [] (uint64_t a, uint64_t b)
+	{
+		ByteArrayPrefix<8> pa, pb;
+		write_unsigned_big_endian(pa, a);
+		write_unsigned_big_endian(pb, b);
+		REQUIRE(pa < pb);
+		REQUIRE(pa.get_branch_bits(PrefixLenBits{0}) == a >> 60);
+		REQUIRE(pb.get_branch_bits(PrefixLenBits{0}) == b >> 60);
+	};
+
+	check_lt(0x1234'0000'0000'0000, 0x1234'0000'0000'0001);
+	check_lt(0x1234'0000'0000'0000, 0x1235'0000'0000'0000);
+	check_lt(0x1234'0000'0000'0000, 0x1244'0000'0000'0000);
+	check_lt(0x1234'0000'0000'0000, 0x1234'1000'0000'0000);
+	check_lt(0x1234'0000'0000'0000, 0x1234'0100'0000'0000);
+	check_lt(0x1234'0000'0000'0000, 0x2134'0000'0000'0000);
+	check_lt(0x1234'0000'0000'0000, 0x1300'0000'0000'0000);
+	check_lt(0x1230'0000'0000'0000, 0x1234'0000'0000'0000);
+	check_lt(0x1225'0000'0000'0000, 0x1234'0000'0000'0000);
+}
+
 TEST_CASE("uint64_truncate", "[prefix]")
 {
 	uint64_t query = 0x12345678'0000'0000;
