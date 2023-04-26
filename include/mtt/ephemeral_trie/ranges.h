@@ -44,7 +44,7 @@ struct EphemeralTrieAccumulateValuesRange
 
     //! Construct range covering the whole trie
     EphemeralTrieAccumulateValuesRange(
-    	std::vector<uint64_t> work_list,
+    	std::vector<uint64_t> const& work_list,
         const allocator_t& allocator,
         uint32_t GRAIN_SIZE)
         : GRAIN_SIZE(GRAIN_SIZE)
@@ -78,24 +78,10 @@ struct EphemeralTrieAccumulateValuesRange
             utils::print_assert(
                 other.work_list.size() != 1,
                 "other.work_list.size() == 1");
-            /*
-            if (other.work_list.size() == 1) {
-                utils::print_assert(
-                    )
-                std::printf("other.work_list.size() = 1?!\n");
-                throw std::runtime_error(
-                    "shouldn't still have other.work_list.size() == 1");
-            } */
+
             utils::print_assert(
                 other.work_list.size() != 0,
                 "other.work_list.size() == 0");
-
-            /*
-            if (other.work_list.size() == 0) {
-                std::printf("other.work_list.size() = 0?!\n");
-                throw std::runtime_error(
-                    "shouldn't get to other.work_list.size() == 0");
-            } */
 
             work_list.push_back(other.work_list[0]);
 
@@ -157,22 +143,14 @@ struct EphemeralTrieApplyRange
             utils::print_assert(other.work_list.size() != 0,
                 "other.work_list.size() == 0");
 
-            //if (other.work_list.size() == 0) {
-            //    std::printf("other work list shouldn't be zero!\n");
-            //    throw std::runtime_error("errors in tbb don't print, sadly");
-            //}
             if (other.work_list.size() == 1)
             {
                 utils::print_assert(
                     other.work_list[0] >> 32 != UINT32_MAX,
                     "found nullptr in EphemeralTrieApplyRange");
-                //if (other.work_list.at(0) >> 32 == UINT32_MAX) {
-                //    throw std::runtime_error("found nullptr in ApplyRange!");
-               // }
-
+   
                 other.work_list = allocator.get_object(other.work_list.at(0) >> 32)
                                       .children_and_sizes_list();
-
             } else {
 
 	            work_list.push_back(other.work_list[0]);
@@ -246,7 +224,7 @@ class EphemeralTrieHashRange
                 //    = allocator.get_object(other.nodes[0]).children_list();
             }
             if (other.nodes.size() == 0) {
-                std::printf("other.nodes.size() = 0!");
+                std::printf("other.nodes.size() = 0!\n");
                 return;
             }
 
@@ -259,7 +237,4 @@ class EphemeralTrieHashRange
     }
 };
 
-
-
-
-}
+} // namespace trie

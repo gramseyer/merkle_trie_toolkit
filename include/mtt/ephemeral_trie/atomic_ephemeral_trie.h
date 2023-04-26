@@ -713,11 +713,11 @@ ATN_DECL :: compute_hash(allocator_t& allocator, std::vector<uint8_t>& digest_bu
 
         for (uint8_t bb = 0; bb < 16; bb++)
         {
-            uint64_t res = children.get(bb);
+            const uint32_t ptr = (children.get(bb) >> 32);
 
-            if ((res >> 32) != UINT32_MAX)
+            if (ptr != UINT32_MAX)
             {
-                allocator.get_object(res >> 32).compute_hash(allocator, digest_buffer);
+                allocator.get_object(ptr).compute_hash(allocator, digest_buffer);
                 bv.add(bb);
             }
         }
@@ -728,17 +728,14 @@ ATN_DECL :: compute_hash(allocator_t& allocator, std::vector<uint8_t>& digest_bu
 
         for (uint8_t bb = 0; bb < 16; bb++)
         {
-            uint64_t res = children.get(bb);
+            const uint32_t ptr = (children.get(bb) >> 32);
 
-            if ((res >> 32) != UINT32_MAX)
+            if (ptr != UINT32_MAX)
             {
-                allocator.get_object(res >> 32).append_hash_to_vec(digest_buffer);
+                allocator.get_object(ptr).append_hash_to_vec(digest_buffer);
             }
         }
     }
-
-    //print_self("hash time");
-    //std::printf("input data %s\n", detail::array_to_str(digest_buffer).c_str());
 
     if (crypto_generichash(hash.data(),
                            hash.size(),
