@@ -8,7 +8,7 @@ This project should be includeable as a submodule, importing the makefile fragme
 There is also a standalone autotools build script.
 However, this project relies on gramseyer/utility.git, which could be
 included as a submodule here but is more naturally 
-added to a project via its out makefile fragment
+added to a project via its own makefile fragment
 (see scslab/smart-contract-scalability.git for an example).
 
 # Project Structure
