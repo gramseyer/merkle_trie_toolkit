@@ -324,7 +324,7 @@ public:
     	return prefix_len;
     }
 
-    auto const&
+    auto const*
     compute_hash(std::vector<uint8_t>& digest_bytes);
 
     // TESTING ONLY
@@ -539,9 +539,14 @@ public:
 		utils::print_assert(!layer_active, "invalid compute hash");
 
 		std::vector<uint8_t> digest_bytes;
-		auto out = base_reference.root -> compute_hash(digest_bytes);
-		utils::print_assert(out.hash_valid, "returned hash is valid");
-		return out.hash;
+		auto* out = base_reference.root -> compute_hash(digest_bytes);
+		if (!out)
+		{
+			std::printf("return empty\n");
+			return Hash(); // empty trie
+		}
+		utils::print_assert(out->hash_valid, "returned hash is valid");
+		return out->hash;
 	}
 
 	void gc_inactive_leaf(const prefix_t& prefix)
@@ -898,13 +903,16 @@ LTN_DECL::insert(
 }
 
 LTN_TEMPLATE
-auto const&
+auto const*
 LTN_DECL::compute_hash(std::vector<uint8_t>& digest_bytes)
 {
-	if (metadata.hash_valid) {
-		return metadata;
-	}
-	auto hash_bytes = [] (std::vector<uint8_t>& bytes, metadata_t& meta) {
+	static auto return_null = [] (metadata_t& meta) -> const metadata_t*
+	{
+		meta.return_null = true;
+		return nullptr;
+	};
+
+	static auto hash_bytes = [] (std::vector<uint8_t>& bytes, metadata_t& meta) {
 		if (crypto_generichash(
         	meta.hash.data(),
         	meta.hash.size(),
@@ -918,21 +926,35 @@ LTN_DECL::compute_hash(std::vector<uint8_t>& digest_bytes)
 		meta.hash_valid = true;
 	};
 
+	if (metadata.hash_valid) {
+		return &metadata;
+	}
+
+	if (metadata.return_null)
+	{
+		return return_null(metadata);
+	}
+
 	if (is_leaf())
 	{
+		auto commitment = std::get<value_t>(children_or_value).get_layer_commitment();
+
+		if (!commitment) {
+			return return_null(metadata);
+		}
+
 		digest_bytes.clear();
 		utils::print_assert(std::get<value_t>(children_or_value).is_active(), "compute hash on inactive node");
 
 		write_node_header(digest_bytes, prefix, prefix_len);
-		auto commitment = std::get<value_t>(children_or_value).get_layer_commitment();
 
-		commitment.write_to(digest_bytes);
+		commitment->write_to(digest_bytes);
 
-		metadata.read(commitment);
+		metadata.read_from(*commitment);
 		metadata.size = 1;
 		hash_bytes(digest_bytes, metadata);
 
-		return metadata;
+		return &metadata;
 	}
 
 	uint8_t found_active_children = 0;
@@ -942,14 +964,22 @@ LTN_DECL::compute_hash(std::vector<uint8_t>& digest_bytes)
 	{
 		auto* ptr = get_child(bb);
 
-		if (ptr == nullptr || ptr -> get_num_active_children() == 0)
+		if (ptr == nullptr) // || ptr -> get_num_active_children() == 0)
 		{
 			continue;
 		}
-		found_active_children ++;
-		bv.add(bb);
-		ptr -> compute_hash(digest_bytes);
+		if (ptr -> compute_hash(digest_bytes))
+		{
+			found_active_children ++;
+			bv.add(bb);
+		}
 	}
+
+	if (found_active_children == 0)
+	{
+		return return_null(metadata);
+	}
+
 	digest_bytes.clear();
 
 	write_node_header(digest_bytes, prefix, prefix_len);
@@ -959,23 +989,30 @@ LTN_DECL::compute_hash(std::vector<uint8_t>& digest_bytes)
 	{
 		auto* ptr = get_child(bb);
 
-		if (ptr == nullptr || ptr -> get_num_active_children() == 0)
+		if (ptr == nullptr) // || ptr -> get_num_active_children() == 0)
 		{
 			continue;
 		}
+		auto const* m = ptr -> compute_hash(digest_bytes);
+
+		if (!m)
+		{
+			continue;
+		}
+
 		if (found_active_children == 1)
 		{
-			metadata = ptr -> compute_hash(digest_bytes);
+			metadata = *m;
 			utils::print_assert(metadata.hash_valid, "must get valid hash from child");
-			return metadata;
+			return &metadata;
 		}
-		auto const& child_meta = ptr -> compute_hash(digest_bytes);
+		auto const& child_meta = *m;
 		metadata += child_meta;
 		child_meta.write_to(digest_bytes);
 	}
 
 	hash_bytes(digest_bytes, metadata);
-	return metadata;
+	return &metadata;
 }
 
 /*

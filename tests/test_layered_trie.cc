@@ -17,10 +17,10 @@ namespace test
 		{
 			return true;
 		}
-		auto get_layer_commitment() const { return EmptyWriteable{}; }
+		auto get_layer_commitment() const { return std::make_optional<EmptyWriteable>(); }
 
 		TestValue() = default;
-		TestValue(const EmptyWriteable&) {}
+		TestValue(const std::optional<EmptyWriteable>&) {}
 	};
 
 	struct CounterValue 
@@ -39,10 +39,15 @@ namespace test
 			return true;
 		}
 
-		auto get_layer_commitment() const { return CounterWriteable{counter}; }
+		auto get_layer_commitment() const { return std::make_optional<CounterWriteable>(counter); }
 
 		CounterValue() = default;
-		CounterValue(const CounterWriteable& v) : counter(v.counter) {}
+		CounterValue(const std::optional<CounterWriteable>& v) : counter() {
+			if (v)
+			{
+				counter = v->counter;
+			}
+		}
 	};
 
 	struct ActivateableValue
@@ -61,10 +66,10 @@ namespace test
 		bool is_active() const {
 			return active;
 		}
-		auto get_layer_commitment() const { return ActivateableWriteable{active}; }
+		auto get_layer_commitment() const { return active ? std::make_optional<ActivateableWriteable>(active) : std::nullopt; }
 
 		ActivateableValue() = default;
-		ActivateableValue(const ActivateableWriteable& v) : active(v.active) {}
+		ActivateableValue(const std::optional<ActivateableWriteable>& v) : active((!!v) && v->active) {}
 	};
 }
 
@@ -466,6 +471,91 @@ TEST_CASE("supersede dtor ordering check", "[layered]")
 		REQUIRE(access_ref.in_normal_form());
 	}
 	trie.raise_gc_lowerbound(2);
+}
+
+TEST_CASE("hash inactives", "[layered]")
+{
+	using prefix_t = UInt64Prefix;
+	using value_t = test::ActivateableValue;
+	LayeredTrie<prefix_t, value_t> trie;
+
+	auto activated = [] (test::ActivateableValue& val)
+	{
+		val.active = true;
+		return;
+	};
+
+	auto inactivated = [] (test::ActivateableValue& val)
+	{
+		val.active = false;
+		return;
+	};
+
+	SECTION("no inserts")
+	{
+		trie.bump_active_layer(); // create 1
+		trie.bump_active_layer(); // create 2
+		REQUIRE(trie.get_layer(1).open_access_reference().compute_hash() == Hash{});
+	}
+
+	SECTION("only inactive")
+	{
+		{
+			auto& layer1 = trie.bump_active_layer(); // create 1
+			auto access_ref = layer1.open_access_reference();
+
+			access_ref.insert(UInt64Prefix{0x0000'0000'0000'0000}, inactivated);
+			access_ref.insert(UInt64Prefix{0x0000'0000'0000'0001}, inactivated);
+			access_ref.insert(UInt64Prefix{0x0000'0000'0000'0010}, inactivated);
+			access_ref.insert(UInt64Prefix{0x0000'0000'0000'0011}, inactivated);
+			access_ref.insert(UInt64Prefix{0x0000'0000'0000'0100}, inactivated);
+			access_ref.insert(UInt64Prefix{0x0000'0000'0000'0101}, inactivated);
+			access_ref.insert(UInt64Prefix{0x0000'0000'0010'0000}, inactivated);
+		}
+
+
+		trie.bump_active_layer(); // create 2
+		REQUIRE(trie.get_layer(1).open_access_reference().compute_hash() == Hash{});
+	}
+
+	SECTION("some inactive, some active")
+	{
+		{
+			auto& layer1 = trie.bump_active_layer(); // create 1
+			auto access_ref = layer1.open_access_reference();
+
+			access_ref.insert(UInt64Prefix{0x0000'0000'0000'0000}, activated);
+			access_ref.insert(UInt64Prefix{0x0000'0000'0000'0001}, activated);
+			access_ref.insert(UInt64Prefix{0x0000'0000'0000'0010}, inactivated);
+			access_ref.insert(UInt64Prefix{0x0000'0000'0000'0011}, inactivated);
+			access_ref.insert(UInt64Prefix{0x0000'0000'0000'0100}, inactivated);
+			access_ref.insert(UInt64Prefix{0x0000'0000'0000'0101}, inactivated);
+			access_ref.insert(UInt64Prefix{0x0000'0000'0010'0000}, inactivated);
+		}
+
+
+		trie.bump_active_layer(); // create 2
+		auto h1 = trie.get_layer(1).open_access_reference().compute_hash();
+
+		REQUIRE(h1 != Hash());
+		
+		{
+			auto access_ref = trie.get_layer(2).open_access_reference();
+
+			// mix of new and old
+			access_ref.insert(UInt64Prefix{0x0000'0000'0000'0010}, inactivated);
+			access_ref.insert(UInt64Prefix{0x0000'0000'0000'0012}, inactivated);
+			access_ref.insert(UInt64Prefix{0x0000'0000'0000'0300}, inactivated);
+			access_ref.insert(UInt64Prefix{0x0000'0000'0000'0201}, inactivated);
+			access_ref.insert(UInt64Prefix{0x0000'0000'0010'0000}, inactivated);
+		}
+
+		trie.bump_active_layer(); // create 3
+
+		auto h2 = trie.get_layer(2).open_access_reference().compute_hash();
+
+		REQUIRE(h2 == h1);
+	}
 }
 
 TEST_CASE("hash counter trie generalcase, no metadata", "[layered]")

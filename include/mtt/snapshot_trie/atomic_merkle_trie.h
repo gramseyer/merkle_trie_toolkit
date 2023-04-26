@@ -423,10 +423,12 @@ AMTN_DECL::insert(
 
 			if (try_add_child(bb, child, new_node))
 			{
-				//std::printf("inserted new child\n");
+				// inserted new child
 				return;
 			}
-			gc.free(new_node);
+			// only reference to new_node is here, so we can delete freely.
+			delete new_node;
+			//gc.free(new_node);
 		} 
 		else
 		{
@@ -435,7 +437,6 @@ AMTN_DECL::insert(
 
 			if (join_len >= child -> get_prefix_len())
 			{
-			//	std::printf("insert recursing\n");
 				child -> template insert<InsertFn>(new_prefix, std::move(new_value), gc);
 				return;
 			}
@@ -445,12 +446,13 @@ AMTN_DECL::insert(
 
 			if (try_add_child(bb, child, new_node))
 			{
-			//	std::printf("new intermediate node\n");
 				new_node -> commit_ownership();
 				new_node -> template insert<InsertFn, InsertedValue>(new_prefix, std::move(new_value), gc);
 				return;
 			}
-			gc.free(new_node);
+			delete new_node;
+			// only reference to new_node is local
+			//gc.free(new_node);
 		}
 		__builtin_ia32_pause();
 	}

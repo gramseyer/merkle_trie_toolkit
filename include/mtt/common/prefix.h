@@ -507,10 +507,12 @@ public:
 };
 
 template<TriePrefix prefix_t>
-static void write_node_header(std::vector<unsigned char>& buf, prefix_t const& prefix, const PrefixLenBits& prefix_len_bits) {
-
+static void write_node_header(
+	std::vector<unsigned char>& buf, 
+	prefix_t const& prefix, 
+	const PrefixLenBits& prefix_len_bits)
+{
 	utils::append_unsigned_big_endian(buf, prefix_len_bits.len);
-
 	prefix.write_bytes_to(buf, prefix_len_bits);
 }
 
