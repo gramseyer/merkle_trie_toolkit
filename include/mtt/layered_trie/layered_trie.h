@@ -502,7 +502,7 @@ public:
 template<typename prefix_t, typename value_t, LayeredTrieNodeMetadata metadata_t>
 class TrieLayerRoot;
 
-template<typename prefix_t, typename value_t, LayeredTrieNodeMetadata metadata_t>
+template<typename prefix_t, ValueType value_t, LayeredTrieNodeMetadata metadata_t>
 class LayeredTrie;
 
 
@@ -625,7 +625,7 @@ public:
 	}
 };
 
-template<typename prefix_t, typename value_t, LayeredTrieNodeMetadata metadata_t = LayeredTrieNodeMetadataBase>
+template<typename prefix_t, ValueType value_t, LayeredTrieNodeMetadata metadata_t = LayeredTrieNodeMetadataBase>
 class LayeredTrie : public utils::NonMovableOrCopyable
 {
 	using layer_t = TrieLayerRoot<prefix_t, value_t, metadata_t>;
