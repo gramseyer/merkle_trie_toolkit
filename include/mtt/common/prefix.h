@@ -33,6 +33,7 @@ Too many bugs were caused by accidentaly bits/bytes unit conversions.
 struct PrefixLenBits {
 
 	uint16_t len;
+
 	//! Number of bytes needed to store len bits of a prefix.
 	size_t num_prefix_bytes() const{
 		return detail::num_prefix_bytes_(len);
@@ -403,15 +404,17 @@ public:
 		const PrefixLenBits& other_len) const {
 
 		uint64_t diff = prefix ^ other.prefix;
-		PrefixLenBits computed = PrefixLenBits{MAX_LEN_BITS};
+		uint16_t computed_bits = MAX_LEN_BITS;
+		//PrefixLenBits computed = PrefixLenBits{MAX_LEN_BITS};
 
 		if (diff != 0) {
 			size_t matching_bits = __builtin_clzll(diff);
 			uint16_t match_rounded 
 				= matching_bits - (matching_bits % BRANCH_BITS);
-			computed = PrefixLenBits{match_rounded};
+			computed_bits = match_rounded;
+			//computed = PrefixLenBits{match_rounded};
 		}
-		return std::min({computed, self_len, other_len});
+		return std::min<PrefixLenBits>({computed_bits, self_len, other_len});
 	}
 
 	//! Truncate the prefix to a defined length
@@ -503,7 +506,7 @@ public:
 	}
 };
 
-template<typename prefix_t>
+template<TriePrefix prefix_t>
 static void write_node_header(std::vector<unsigned char>& buf, prefix_t const& prefix, const PrefixLenBits& prefix_len_bits) {
 
 	utils::append_unsigned_big_endian(buf, prefix_len_bits.len);

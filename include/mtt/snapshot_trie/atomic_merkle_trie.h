@@ -80,8 +80,8 @@ class AtomicMerkleTrieNode
 		value_t value;
 	};
 
-	prefix_t prefix;
-	PrefixLenBits prefix_len;
+	const prefix_t prefix;
+	const PrefixLenBits prefix_len;
 
 	std::atomic<bool> hash_valid;
 	bool children_owned = false;
@@ -113,7 +113,7 @@ public:
 	// map node
 	AtomicMerkleTrieNode(prefix_t const& prefix, PrefixLenBits len)
 		: children()
-		, prefix(prefix)
+		, prefix([len] (const prefix_t& p) -> prefix_t { prefix_t out = p; out.truncate(len); return out; } (prefix))
 		, prefix_len(len)
 		, hash_valid(false)
 		, children_owned(false)
@@ -124,7 +124,6 @@ public:
 			{
 				throw std::runtime_error("wrong ctor used");
 			}
-			this -> prefix.truncate(len);
 		}
 
 	void set_unique_child(uint8_t bb, node_t* ptr)
@@ -274,7 +273,7 @@ public:
     template<typename InsertFn>
     node_t* get_or_make_subnode_ref(const prefix_t& query_prefix, const PrefixLenBits query_len, gc_t& gc);
 
-    void append_hash_to_vec(std::vector<uint8_t>& bytes)
+    void append_hash_to_vec(std::vector<uint8_t>& bytes) const
     {
     	trie_assert(hash_valid.load(std::memory_order_acquire), "invalid hash appended");
 
