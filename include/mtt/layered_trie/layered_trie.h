@@ -542,7 +542,6 @@ public:
 		auto* out = base_reference.root -> compute_hash(digest_bytes);
 		if (!out)
 		{
-			std::printf("return empty\n");
 			return Hash(); // empty trie
 		}
 		utils::print_assert(out->hash_valid, "returned hash is valid");
@@ -964,7 +963,7 @@ LTN_DECL::compute_hash(std::vector<uint8_t>& digest_bytes)
 	{
 		auto* ptr = get_child(bb);
 
-		if (ptr == nullptr) // || ptr -> get_num_active_children() == 0)
+		if (ptr == nullptr)
 		{
 			continue;
 		}
@@ -989,7 +988,7 @@ LTN_DECL::compute_hash(std::vector<uint8_t>& digest_bytes)
 	{
 		auto* ptr = get_child(bb);
 
-		if (ptr == nullptr) // || ptr -> get_num_active_children() == 0)
+		if (ptr == nullptr)
 		{
 			continue;
 		}
