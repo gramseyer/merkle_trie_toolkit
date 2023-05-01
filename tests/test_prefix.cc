@@ -121,6 +121,7 @@ TEST_CASE("test uint64 compare", "[prefix]")
 	check_lt(0x1234'0000'0000'0000, 0x1234'0100'0000'0000);
 	check_lt(0x1234'0000'0000'0000, 0x2134'0000'0000'0000);
 	check_lt(0x1234'0000'0000'0000, 0x1300'0000'0000'0000);
+	check_lt(0x0000'0000'0000'0001, 0x0000'0000'0000'0010);
 }
 
 TEST_CASE("test bytearray compare short", "[prefix]")

@@ -161,6 +161,7 @@ public:
 		const ByteArrayPrefix& other, 
 		const PrefixLenBits& other_len) const {
 
+		// length in bits
 		size_t res = MAX_LEN_BYTES * 8;
 
 		for (size_t i = 0; i < WORDS; i++) {
@@ -230,36 +231,36 @@ public:
 
 	//! Get byte at position i.
 	//! Primary use is when writing the prefix.
-	unsigned char& operator[](size_t i) {
-		unsigned char* data_ptr 
-			= reinterpret_cast<unsigned char*>(data.data());
+	uint8_t& operator[](size_t i) {
+		uint8_t* data_ptr 
+			= reinterpret_cast<uint8_t*>(data.data());
 		return data_ptr[i];
 	}
 
 	//! const access to byte at position i.
-	unsigned char operator[](size_t i) const {
-		const unsigned char* data_ptr 
-			= reinterpret_cast<const unsigned char*>(data.data());
+	uint8_t operator[](size_t i) const {
+		const uint8_t* data_ptr 
+			= reinterpret_cast<const uint8_t*>(data.data());
 		return data_ptr[i];
 	}
 
 	//! Set the byte at a particular index.
-	void set_byte(size_t i, unsigned char byte) {
-			if (i >= MAX_LEN_BYTES) {
-			throw std::runtime_error("invalid prefix array access!");
-		}
-
-		unsigned char* data_ptr = reinterpret_cast<unsigned char*>(data.data());
-		data_ptr[i] = byte;
-	}
-
-	//! Bounds checked byte access.
-	unsigned char& at(size_t i) {
+	void set_byte(size_t i, uint8_t byte) {
 		if (i >= MAX_LEN_BYTES) {
 			throw std::runtime_error("invalid prefix array access!");
 		}
 
-		unsigned char* data_ptr = reinterpret_cast<unsigned char*>(data.data());
+		uint8_t* data_ptr = reinterpret_cast<uint8_t*>(data.data());
+		data_ptr[i] = byte;
+	}
+
+	//! Bounds checked byte access.
+	uint8_t& at(size_t i) {
+		if (i >= MAX_LEN_BYTES) {
+			throw std::runtime_error("invalid prefix array access!");
+		}
+
+		uint8_t* data_ptr = reinterpret_cast<uint8_t*>(data.data());
 		return data_ptr[i];
 	}
 
@@ -280,8 +281,8 @@ public:
 
 		static_assert(out.size() == MAX_LEN_BYTES, "invalid array type");
 
-		const unsigned char* ptr 
-			= reinterpret_cast<const unsigned char*>(data.data());
+		const uint8_t* ptr 
+			= reinterpret_cast<const uint8_t*>(data.data());
 
 		std::memcpy(out.data(), ptr, MAX_LEN_BYTES);
 		return out;
@@ -289,10 +290,10 @@ public:
 
 	void write_bytes_to(std::vector<uint8_t>& out, PrefixLenBits const& prefix_len) const
 	{
-		uint8_t bytes_to_write = prefix_len.num_prefix_bytes();
+		const uint8_t bytes_to_write = prefix_len.num_prefix_bytes();
 
-		const unsigned char* ptr 
-			= reinterpret_cast<const unsigned char*>(data.data());
+		const uint8_t* ptr 
+			= reinterpret_cast<const uint8_t*>(data.data());
 
 		out.insert(out.end(), ptr, ptr + bytes_to_write);
 		out.back() &= prefix_len.get_truncate_mask();
@@ -313,8 +314,8 @@ public:
 		//TODO try the other candidate(compare word by word, in loop);
 
 		auto res = memcmp(
-			reinterpret_cast<const unsigned char*>(data.data()),
-			reinterpret_cast<const unsigned char*>(other.data.data()),
+			reinterpret_cast<const uint8_t*>(data.data()),
+			reinterpret_cast<const uint8_t*>(other.data.data()),
 			MAX_LEN_BYTES);
 		if (res < 0) {
 			return std::strong_ordering::less;
@@ -405,14 +406,12 @@ public:
 
 		uint64_t diff = prefix ^ other.prefix;
 		uint16_t computed_bits = MAX_LEN_BITS;
-		//PrefixLenBits computed = PrefixLenBits{MAX_LEN_BITS};
 
 		if (diff != 0) {
 			size_t matching_bits = __builtin_clzll(diff);
 			uint16_t match_rounded 
 				= matching_bits - (matching_bits % BRANCH_BITS);
 			computed_bits = match_rounded;
-			//computed = PrefixLenBits{match_rounded};
 		}
 		return std::min<PrefixLenBits>({computed_bits, self_len, other_len});
 	}
@@ -440,7 +439,7 @@ public:
 	void write_bytes_to(std::vector<uint8_t>& out, PrefixLenBits const& prefix_len) const
 	{
 		utils::append_unsigned_big_endian(out, prefix);
-		uint8_t extra_bytes = 8 - prefix_len.num_prefix_bytes();
+		const uint8_t extra_bytes = 8 - prefix_len.num_prefix_bytes();
 		out.erase(out.end() - extra_bytes, out.end());
 		out.back() &= prefix_len.get_truncate_mask();
 	}
@@ -457,7 +456,8 @@ public:
 	}
 
 	//! Bounds checked byte access.
-	uint8_t at(size_t i) const {
+	const uint8_t 
+	at(size_t i) const {
 		if (i >= MAX_LEN_BYTES) {
 			throw std::runtime_error("invalid prefix array access!");
 		}
@@ -495,9 +495,9 @@ public:
 
 	//! Modify the prefix by setting the bits after fixed_len to bb
 	void set_next_branch_bits(PrefixLenBits const& fixed_len, const uint8_t bb) {
-		uint8_t offset = (60-fixed_len.len);	
-		uint64_t mask = ((uint64_t) BRANCH_MASK) << offset;
-		uint64_t adjust = ((uint64_t) bb) << offset;
+		const uint8_t offset = (60-fixed_len.len);	
+		const uint64_t mask = ((uint64_t) BRANCH_MASK) << offset;
+		const uint64_t adjust = ((uint64_t) bb) << offset;
 		prefix = (prefix & (~mask)) | adjust;
 	}
 
