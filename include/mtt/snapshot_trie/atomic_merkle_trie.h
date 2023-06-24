@@ -87,8 +87,7 @@ class AtomicMerkleTrieNode
 	bool children_owned = false;
 	bool value_valid = false;
 
-	std::atomic<int32_t> size;
-
+	int32_t size;
 	Hash hash;
 
 	constexpr static uint16_t KEY_LEN_BYTES = prefix_t::size_bytes();
@@ -616,7 +615,7 @@ AMTN_DECL :: compute_hash_and_normalize(gc_t& gc, std::vector<uint8_t>& digest_b
 {
 	if (hash_valid)
 	{
-		return size.load(std::memory_order_acquire);
+		return size;
 	}
 
 	if (is_leaf())
@@ -642,7 +641,8 @@ AMTN_DECL :: compute_hash_and_normalize(gc_t& gc, std::vector<uint8_t>& digest_b
         	throw std::runtime_error("error from crypto_generichash");
     	}
     	hash_valid = true;
-    	size.exchange(1, std::memory_order_acq_rel);
+    	size = 1;
+    //	size.exchange(1, std::memory_order_acq_rel);
     	return 1;
 	}
 
@@ -680,8 +680,9 @@ AMTN_DECL :: compute_hash_and_normalize(gc_t& gc, std::vector<uint8_t>& digest_b
 			num_children ++;
 		}
 	}
+	size = new_size;
 
-	size.store(new_size, std::memory_order_release);
+	//size.store(new_size, std::memory_order_release);
 	if (num_children <= 1 && prefix_len.len != 0)
 	{
 		// don't bother hashing, except special casing the root node
