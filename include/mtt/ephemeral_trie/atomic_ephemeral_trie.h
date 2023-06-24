@@ -14,6 +14,7 @@
 
 #include "mtt/ephemeral_trie/allocator.h"
 #include "mtt/ephemeral_trie/ranges.h"
+#include "mtt/ephemeral_trie/concepts.h"
 
 #include <utils/non_movable.h>
 
@@ -74,16 +75,16 @@ class AtomicChildrenMap : private utils::NonMovableOrCopyable
     }
 };
 
-template<typename ValueType, typename PrefixT, uint8_t LOG_BUFSIZE>
+template<typename ValueType, typename PrefixT, uint8_t LOG_BUFSIZE, EphemeralTrieMetadata metadata_t>
 class AtomicTrie;
 
-template<typename ValueType, typename PrefixT, uint8_t LOG_BUFSIZE>
+template<typename ValueType, typename PrefixT, uint8_t LOG_BUFSIZE, EphemeralTrieMetadata metadata_t>
 class alignas(64) AtomicTrieNode : private utils::NonMovableOrCopyable
 {
 
   public:
     using prefix_t = PrefixT;
-    using node_t = AtomicTrieNode<ValueType, prefix_t, LOG_BUFSIZE>;
+    using node_t = AtomicTrieNode<ValueType, prefix_t, LOG_BUFSIZE, metadata_t>;
     using allocator_t = EphemeralTrieNodeAllocator<node_t, ValueType, LOG_BUFSIZE>;
     using allocation_context_t = typename allocator_t::context_t;
     using value_t = ValueType;
@@ -103,9 +104,10 @@ class alignas(64) AtomicTrieNode : private utils::NonMovableOrCopyable
 
     uint32_t value_pointer = UINT32_MAX;
 
-    bool hash_valid = false;
+    metadata_t metadata;
 
-    Hash hash;
+    //bool hash_valid = false;
+    //Hash hash;
 
   public:
     // constructors
@@ -127,7 +129,7 @@ class alignas(64) AtomicTrieNode : private utils::NonMovableOrCopyable
         prefix = key;
         prefix_len = MAX_KEY_LEN_BITS;
 
-        hash_valid = false;
+        metadata.clear();
     }
 
     template<typename InsertFn, typename InsertedValueType>
@@ -145,7 +147,7 @@ class alignas(64) AtomicTrieNode : private utils::NonMovableOrCopyable
         prefix = key;
         prefix_len = MAX_KEY_LEN_BITS;
 
-        hash_valid = false;
+        metadata.clear();
     }
 
     void set_as_new_branch_node(const prefix_t& key,
@@ -164,7 +166,7 @@ class alignas(64) AtomicTrieNode : private utils::NonMovableOrCopyable
         children.set_unique_child(single_child_branch_bits,
                                   single_child_pointer);
 
-        hash_valid = false;
+        metadata.clear();
     }
 
     void set_as_empty_node()
@@ -174,7 +176,7 @@ class alignas(64) AtomicTrieNode : private utils::NonMovableOrCopyable
 
         children.clear();
 
-        hash_valid = false;
+        metadata.clear();
     }
 
     PrefixLenBits get_prefix_match_len(const prefix_t& other_key,
@@ -226,11 +228,11 @@ class alignas(64) AtomicTrieNode : private utils::NonMovableOrCopyable
 
     uint32_t size() const;
 
-    void append_hash_to_vec(std::vector<uint8_t>& digest_buffer) const;
+    void append_metadata(std::vector<uint8_t>& digest_buffer, metadata_t& acc) const;
     void compute_hash(allocator_t& allocator, std::vector<uint8_t>& digest_buffer);
 
     Hash get_hash() const {
-        return hash;
+        return metadata.hash;
     }
 
     const prefix_t& get_prefix() const {
@@ -300,12 +302,12 @@ class alignas(64) AtomicTrieNode : private utils::NonMovableOrCopyable
     }
 };
 
-template<typename ValueType, typename PrefixT, uint8_t LOG_BUFSIZE = 19>
+template<typename ValueType, typename PrefixT, uint8_t LOG_BUFSIZE = 19, EphemeralTrieMetadata metadata_t = EphemeralTrieMetadataBase>
 class AtomicTrie
 {
   public:
     using prefix_t = PrefixT;
-    using node_t = AtomicTrieNode<ValueType, prefix_t, LOG_BUFSIZE>;
+    using node_t = AtomicTrieNode<ValueType, prefix_t, LOG_BUFSIZE, metadata_t>;
     using allocator_t = typename node_t::allocator_t;//EphemeralTrieNodeAllocator<node_t, LOG_BUFSIZE>;
     using allocation_context_t = typename allocator_t::context_t;
     using value_t = ValueType;
@@ -453,7 +455,7 @@ class AtomicTrie
     }
 };
 
-template<typename main_trie_t> //typename ValueType, typename prefix_t, uint8_t LOG_BUFSIZE>
+template<typename main_trie_t>
 class AtomicTrieReference : public utils::NonMovableOrCopyable
 {
     using node_t = typename main_trie_t::node_t;//AtomicTrieNode<ValueType, prefix_t, LOG_BUFSIZE>;
@@ -464,7 +466,6 @@ class AtomicTrieReference : public utils::NonMovableOrCopyable
 
     main_trie_t& main_trie;
 
-    //AtomicTrie<ValueType, prefix_t, LOG_BUFSIZE>& main_trie;
     allocation_context_t alloc;
 
 public:
@@ -488,8 +489,8 @@ public:
     }
 };
 
-#define ATN_TEMPLATE template<typename ValueType, typename PrefixT, uint8_t LOG_BUFSIZE>
-#define ATN_DECL AtomicTrieNode<ValueType, PrefixT, LOG_BUFSIZE>
+#define ATN_TEMPLATE template<typename ValueType, typename PrefixT, uint8_t LOG_BUFSIZE, EphemeralTrieMetadata metadata_t>
+#define ATN_DECL AtomicTrieNode<ValueType, PrefixT, LOG_BUFSIZE, metadata_t>
 
 ATN_TEMPLATE
 template<typename InsertFn, typename InsertedValue>
@@ -683,19 +684,22 @@ ATN_DECL :: size() const
 
 ATN_TEMPLATE 
 void
-ATN_DECL :: append_hash_to_vec(std::vector<uint8_t>& digest_buffer) const
+ATN_DECL :: append_metadata(std::vector<uint8_t>& digest_buffer, metadata_t& acc) const
 {
-    digest_buffer.insert(
+
+    metadata.write_to(digest_buffer);
+    acc += metadata;
+  /*  digest_buffer.insert(
         digest_buffer.end(),
-        hash.begin(),
-        hash.end());
+        metadata.hash.begin(),
+        metadata.hash.end()); */
 }
 
 ATN_TEMPLATE
 void
 ATN_DECL :: compute_hash(allocator_t& allocator, std::vector<uint8_t>& digest_buffer)
 {
-    if (hash_valid)
+    if (metadata.hash_valid)
     {
         return;
     }
@@ -708,6 +712,7 @@ ATN_DECL :: compute_hash(allocator_t& allocator, std::vector<uint8_t>& digest_bu
         
         auto const& value = allocator.get_value(value_pointer);
         value.copy_data(digest_buffer);
+        metadata.from_value(value);
     }
     else
     {
@@ -734,13 +739,13 @@ ATN_DECL :: compute_hash(allocator_t& allocator, std::vector<uint8_t>& digest_bu
 
             if (ptr != UINT32_MAX)
             {
-                allocator.get_object(ptr).append_hash_to_vec(digest_buffer);
+                allocator.get_object(ptr).append_metadata(digest_buffer, metadata);
             }
         }
     }
 
-    if (crypto_generichash(hash.data(),
-                           hash.size(),
+    if (crypto_generichash(metadata.hash.data(),
+                           metadata.hash.size(),
                            digest_buffer.data(),
                            digest_buffer.size(),
                            NULL,
@@ -748,7 +753,7 @@ ATN_DECL :: compute_hash(allocator_t& allocator, std::vector<uint8_t>& digest_bu
         != 0) {
         throw std::runtime_error("error from crypto_generichash");
     }
-    hash_valid = true;
+    metadata.hash_valid = true;
 }
 
 ATN_TEMPLATE
