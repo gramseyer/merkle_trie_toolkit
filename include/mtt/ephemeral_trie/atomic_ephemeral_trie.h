@@ -332,7 +332,7 @@ class AtomicTrie
 
     template<typename InsertFn = OverwriteInsertFn<ValueType>,
              typename InsertedValueType = ValueType>
-    void insert(prefix_t const& new_prefix,
+    bool insert(prefix_t const& new_prefix,
                 InsertedValueType&& value,
                 allocation_context_t& allocator_context)
     {
@@ -344,7 +344,9 @@ class AtomicTrie
         if (root.template insert<InsertFn, InsertedValueType>(
                 new_prefix, std::move(value), allocator_context)) {
             root.bump_size(new_prefix, allocator_context);
+            return true;
         }
+        return false;
     }
 
     Hash hash_serial() {
@@ -474,15 +476,15 @@ public:
 
     template<typename InsertFn = OverwriteInsertFn<value_t>,
              typename InsertedValueType = value_t>
-    void insert(prefix_t const& new_prefix,
+    bool insert(prefix_t const& new_prefix,
                 InsertedValueType&& value)
     {
-        main_trie.template insert<InsertFn, InsertedValueType>(new_prefix, std::move(value), alloc);
+        return main_trie.template insert<InsertFn, InsertedValueType>(new_prefix, std::move(value), alloc);
     }
 
-    void insert(prefix_t const& new_prefix)
+    bool insert(prefix_t const& new_prefix)
     {
-        main_trie.template insert<OverwriteInsertFn<EmptyValue>, EmptyValue>(new_prefix, EmptyValue{}, alloc);
+        return main_trie.template insert<OverwriteInsertFn<EmptyValue>, EmptyValue>(new_prefix, EmptyValue{}, alloc);
     }
 };
 
