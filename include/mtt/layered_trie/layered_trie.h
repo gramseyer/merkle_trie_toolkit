@@ -185,9 +185,8 @@ public:
 		//std::printf("prefix %s (%lu)\n", prefix.to_string(prefix_len).c_str(), prefix_len);
 		if (!is_leaf())
 		{
-		//	std::printf("not is_leaf\n");
 			uint64_t superseded_layer = get_superseded_layer();
-		//	std::printf("superseded_layer %lu\n", superseded_layer);
+			//std::printf("superseded_layer %lu\n", superseded_layer);
 			if (superseded_layer == 0)
 			{
 				return;
@@ -204,7 +203,6 @@ public:
 
 					if (superseded_layer == child_superseded_layer)
 					{
-						//std::printf("start deleting child on %u at %p\n", bb, ptr);
 						delete ptr;
 					}
 					if (superseded_layer > child_superseded_layer)
@@ -229,7 +227,7 @@ public:
 
 	void set_superseded_layer(uint64_t layer)
 	{
-	//	std::printf("superseding %s (%lu) @ %p with layer %lu\n", prefix.to_string(prefix_len).c_str(),
+		//std::printf("superseding %s (%lu) @ %p with layer %lu\n", prefix.to_string(prefix_len).c_str(),
 	//		prefix_len.len, this, layer);
 		superseded_in_layer.store(layer, std::memory_order_release);
 	}
@@ -701,6 +699,14 @@ public:
 			{
 				i++;
 			}
+		}
+	}
+
+	~LayeredTrie()
+	{
+		for (auto i = roots.begin(); i != roots.end();)
+		{
+			i = roots.erase(i);
 		}
 	}
 
