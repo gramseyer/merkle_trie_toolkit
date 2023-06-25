@@ -14,221 +14,202 @@
 
 #include <utils/threadlocal_cache.h>
 
+#include "mtt/snapshot_trie/concepts.h"
+
 #include <sodium.h>
 
-namespace trie
-{
-
-template<typename prefix_t, typename value_t, uint32_t TLCACHE_SIZE>
-class AtomicMerkleTrieNode;
+namespace trie {
 
 // avoid ABA problem
-template<typename prefix_t, typename value_t, uint32_t TLCACHE_SIZE>
+template<typename node_t, uint32_t TLCACHE_SIZE>
 class AtomicMerkleTrieGC
 {
-	using node_t = AtomicMerkleTrieNode<prefix_t, value_t, TLCACHE_SIZE>;
+    struct LocalGC
+    {
+        std::vector<node_t*> nodes;
+    };
 
-	struct LocalGC {
-		std::vector<node_t*> nodes;
-	};
+    utils::ThreadlocalCache<LocalGC, TLCACHE_SIZE> cache;
 
-	utils::ThreadlocalCache<LocalGC, TLCACHE_SIZE> cache;
+  public:
+    void free(node_t* ptr) { cache.get().nodes.push_back(ptr); }
 
-public:
+    void gc()
+    {
+        auto& locals = cache.get_objects();
 
-	void free(node_t* ptr)
-	{
-		cache.get().nodes.push_back(ptr);
-	}
+        for (auto& l : locals) {
+            if (l) {
+                auto& ptrs = l->nodes;
+                for (auto* ptr : ptrs) {
+                    delete ptr;
+                }
+            }
+        }
 
-	void gc()
-	{
-		auto& locals = cache.get_objects();
+        cache.clear();
+    }
 
-		for (auto& l : locals)
-		{
-			if (l)
-			{
-				auto& ptrs = l -> nodes;
-				for (auto* ptr : ptrs)
-				{
-					delete ptr;
-				}
-			}
-		}
-
-		cache.clear();
-	}
-
-	~AtomicMerkleTrieGC()
-	{
-		gc();
-	}
+    ~AtomicMerkleTrieGC() { gc(); }
 };
 
-template<typename prefix_t, typename value_t, uint32_t TLCACHE_SIZE>
+// credit to https://stackoverflow.com/a/66275373
+template<typename T>
+concept AMT_gc_t = requires(T** a)
+{
+    []<typename node_t, uint32_t x>(AtomicMerkleTrieGC<node_t, x>**) {}(a);
+};
+
+template<typename prefix_t, typename value_t, SnapshotTrieMetadata metadata_t>
 class AtomicMerkleTrieNode
 {
-	using node_t = AtomicMerkleTrieNode<prefix_t, value_t, TLCACHE_SIZE>;
+    using node_t = AtomicMerkleTrieNode<prefix_t, value_t, metadata_t>;
 
-	using gc_t = AtomicMerkleTrieGC<prefix_t, value_t, TLCACHE_SIZE>;
+    static_assert(std::atomic<node_t*>::is_always_lock_free,
+                  "ptr should be lockfree");
 
-	static_assert(std::atomic<node_t*>::is_always_lock_free, "ptr should be lockfree");
+    union
+    {
+        std::array<std::atomic<node_t*>, 16> children;
+        value_t value;
+    };
 
-	union {
-		std::array<std::atomic<node_t*>, 16> children;
-		value_t value;
-	};
+    const prefix_t prefix;
+    const PrefixLenBits prefix_len;
 
-	const prefix_t prefix;
-	const PrefixLenBits prefix_len;
+    std::atomic<bool> hash_valid;
+    bool children_owned = false;
+    bool value_valid = false;
 
-	std::atomic<bool> hash_valid;
-	bool children_owned = false;
-	bool value_valid = false;
+    metadata_t metadata;
+    // int32_t size;
+    // Hash hash;
 
-	int32_t size;
-	Hash hash;
-
-	constexpr static uint16_t KEY_LEN_BYTES = prefix_t::size_bytes();
+    constexpr static uint16_t KEY_LEN_BYTES = prefix_t::size_bytes();
 
     constexpr static PrefixLenBits MAX_KEY_LEN_BITS
         = PrefixLenBits{ KEY_LEN_BYTES * 8 };
 
-public:
+  public:
+    // value node
+    AtomicMerkleTrieNode(prefix_t const& prefix, value_t&& value)
+        : value(std::move(value))
+        , prefix(prefix)
+        , prefix_len(MAX_KEY_LEN_BITS)
+        , hash_valid(false)
+        , children_owned(false)
+        , metadata()
+    // size(0)
+    //, hash()
+    {}
 
-	// value node
-	AtomicMerkleTrieNode(prefix_t const& prefix, value_t&& value)
-		: value(std::move(value))
-		, prefix(prefix)
-		, prefix_len(MAX_KEY_LEN_BITS)
-		, hash_valid(false)
-		, children_owned(false)
-		, size(0)
-		, hash()
-		{
-		}
+    // map node
+    AtomicMerkleTrieNode(prefix_t const& prefix, PrefixLenBits len)
+        : children()
+        , prefix([len](const prefix_t& p) -> prefix_t {
+            prefix_t out = p;
+            out.truncate(len);
+            return out;
+        }(prefix))
+        , prefix_len(len)
+        , hash_valid(false)
+        , children_owned(false)
+        , metadata()
+    //, size(0)
+    //, hash()
+    {
+        if (len == MAX_KEY_LEN_BITS) {
+            throw std::runtime_error("wrong ctor used");
+        }
+    }
 
-	// map node
-	AtomicMerkleTrieNode(prefix_t const& prefix, PrefixLenBits len)
-		: children()
-		, prefix([len] (const prefix_t& p) -> prefix_t { prefix_t out = p; out.truncate(len); return out; } (prefix))
-		, prefix_len(len)
-		, hash_valid(false)
-		, children_owned(false)
-		, size(0)
-		, hash()
-		{
-			if (len == MAX_KEY_LEN_BITS)
-			{
-				throw std::runtime_error("wrong ctor used");
-			}
-		}
+    void set_unique_child(uint8_t bb, node_t* ptr)
+    {
+        // possible memory leak -- won't be freed unless commit_ownership() also
+        // called
+        children[bb] = ptr;
+    }
 
-	void set_unique_child(uint8_t bb, node_t* ptr)
-	{
-		//possible memory leak -- won't be freed unless commit_ownership() also called
-		children[bb] = ptr;
-	}
+    // root node
+    AtomicMerkleTrieNode()
+        : children()
+        , prefix()
+        , prefix_len(0)
+        , hash_valid(false)
+        , children_owned(true)
+        , metadata()
+    //, size(0)
+    //, hash()
+    {}
 
-	// root node
-	AtomicMerkleTrieNode()
-		: children()
-		, prefix()
-		, prefix_len(0)
-		, hash_valid(false)
-		, children_owned(true)
-		, size(0)
-		, hash()
-	{
-	}
+    void validate_value() { value_valid = true; }
 
-	void
-	validate_value()
-	{
-		value_valid = true;
-	}
-
-	template<typename InsertFn, typename InsertedValueType>
-	static value_t 
-	create_new_value(const prefix_t& key,
-		typename std::enable_if<
+    template<typename InsertFn, typename InsertedValueType>
+    static value_t create_new_value(
+        const prefix_t& key,
+        typename std::enable_if<
             !std::is_same<value_t, InsertedValueType>::value,
             InsertedValueType&&>::type v)
-	{
-		auto val = InsertFn::new_value(key);
-		InsertFn::value_insert(val, std::move(v));
-		return val;
-	}
+    {
+        auto val = InsertFn::new_value(key);
+        InsertFn::value_insert(val, std::move(v));
+        return val;
+    }
 
-	template<typename InsertFn, typename InsertedValueType>
-	static value_t 
-	create_new_value(const prefix_t& key,
-		typename std::enable_if<
-            std::is_same<value_t, InsertedValueType>::value,
-            InsertedValueType&&>::type v)
-	{
-		return v;
-	}
+    template<typename InsertFn, typename InsertedValueType>
+    static value_t create_new_value(
+        const prefix_t& key,
+        typename std::enable_if<std::is_same<value_t, InsertedValueType>::value,
+                                InsertedValueType&&>::type v)
+    {
+        return v;
+    }
 
-	void commit_ownership()
-	{
-		children_owned = true;
-	}
+    void commit_ownership() { children_owned = true; }
 
-	static void trie_assert(bool expr, const char* msg)
-	{
-		if (!expr)
-		{
-			std::printf("error: %s\n", msg);
-			std::fflush(stdout);
-			throw std::runtime_error(msg);
-		}
-	}
+    static void trie_assert(bool expr, const char* msg)
+    {
+        if (!expr) {
+            std::printf("error: %s\n", msg);
+            std::fflush(stdout);
+            throw std::runtime_error(msg);
+        }
+    }
 
-	~AtomicMerkleTrieNode()
-	{
-		if (is_leaf())
-		{
-			value.~value_t();
-		}
-		else
-		{
-			if (children_owned)
-			{
-				for (uint8_t bb = 0; bb < 16; bb++)
-				{
-					node_t* ptr = children[bb].load(std::memory_order_relaxed);
-					if (ptr != nullptr)
-					{
-						delete ptr;
-					}
-				}
-			}
-		}
-	}
+    ~AtomicMerkleTrieNode()
+    {
+        if (is_leaf()) {
+            value.~value_t();
+        } else {
+            if (children_owned) {
+                for (uint8_t bb = 0; bb < 16; bb++) {
+                    node_t* ptr = children[bb].load(std::memory_order_relaxed);
+                    if (ptr != nullptr) {
+                        delete ptr;
+                    }
+                }
+            }
+        }
+    }
 
-	bool is_leaf() const
-	{
-		return prefix_len == MAX_KEY_LEN_BITS;
-	}
+    bool is_leaf() const { return prefix_len == MAX_KEY_LEN_BITS; }
 
-	template<typename InsertFn, typename InsertedValue>
-    void
-    insert(prefix_t const& new_prefix,
-           InsertedValue&& value,
-           gc_t& gc);
+    template<typename InsertFn, typename InsertedValue>
+    void insert(prefix_t const& new_prefix,
+                InsertedValue&& value,
+                AMT_gc_t auto& gc);
 
-    int32_t
-    compute_hash_and_normalize(gc_t& gc, std::vector<uint8_t>& digest_bytes);
+    const metadata_t& compute_hash_and_normalize(
+        AMT_gc_t auto& gc,
+        std::vector<uint8_t>& digest_bytes);
 
     uint8_t get_num_children() const;
 
     node_t* extract_singlechild();
 
-    void invalidate_hash() 
+    void invalidate_hash()
     {
-    	hash_valid.store(false, std::memory_order_release);
+        hash_valid.store(false, std::memory_order_release);
     }
 
     PrefixLenBits get_prefix_match_len(const prefix_t& other_key,
@@ -238,548 +219,532 @@ public:
         return prefix.get_prefix_match_len(prefix_len, other_key, other_len);
     }
 
-    prefix_t const& get_prefix() const {
-    	return prefix;
-    }
+    prefix_t const& get_prefix() const { return prefix; }
 
-    PrefixLenBits get_prefix_len() const {
-    	return prefix_len;
-    }
+    PrefixLenBits get_prefix_len() const { return prefix_len; }
 
     node_t* get_child(uint8_t bb)
     {
-    	return children[bb].load(std::memory_order_acquire);
+        return children[bb].load(std::memory_order_acquire);
     }
 
     const node_t* get_child(uint8_t bb) const
     {
-    	return children[bb].load(std::memory_order_acquire);
+        return children[bb].load(std::memory_order_acquire);
     }
 
-    void erase_child(uint8_t bb, gc_t& gc)
+    void erase_child(uint8_t bb, AMT_gc_t auto& gc)
     {
-    	gc.free(children[bb].exchange(nullptr, std::memory_order_acq_rel));
+        gc.free(children[bb].exchange(nullptr, std::memory_order_acq_rel));
     }
 
     bool try_add_child(uint8_t bb, node_t*& expect, node_t* new_ptr)
     {
-    	return children[bb].compare_exchange_strong(expect, new_ptr, std::memory_order_acq_rel);
+        return children[bb].compare_exchange_strong(
+            expect, new_ptr, std::memory_order_acq_rel);
     }
 
     void invalidate_hash_to_node(const node_t* target);
     void invalidate_hash_to_key(const prefix_t& query);
 
     template<typename InsertFn>
-    node_t* get_or_make_subnode_ref(const prefix_t& query_prefix, const PrefixLenBits query_len, gc_t& gc);
+    node_t* get_or_make_subnode_ref(const prefix_t& query_prefix,
+                                    const PrefixLenBits query_len,
+                                    AMT_gc_t auto& gc);
 
     void append_hash_to_vec(std::vector<uint8_t>& bytes) const
     {
-    	trie_assert(hash_valid.load(std::memory_order_acquire), "invalid hash appended");
+        trie_assert(hash_valid.load(std::memory_order_acquire),
+                    "invalid hash appended");
 
-    	bytes.insert(bytes.end(),
-    		hash.begin(),
-    		hash.end());
+        metadata.write_to(bytes);
+
+        // bytes.insert(bytes.end(),
+        //	hash.begin(),
+        //	hash.end());
     }
 
     Hash get_hash() const
     {
-    	trie_assert(hash_valid.load(std::memory_order_acquire), "invalid hash appended");
+        trie_assert(hash_valid.load(std::memory_order_acquire),
+                    "invalid hash appended");
 
-    	return hash;
+        return metadata.hash;
     }
 
-    void delete_value(const prefix_t& delete_prefix, gc_t& gc);
+    void delete_value(const prefix_t& delete_prefix, AMT_gc_t auto& gc);
 
     const value_t* get_value(const prefix_t& query_prefix) const;
 
     void log(std::string pref) const
     {
-    	std::printf("%s %p %s\n", pref.c_str(), this, prefix.to_string(prefix_len).c_str());
-    	if (is_leaf())
-    	{
-    		return;
-    	}
+        std::printf("%s %p %s\n",
+                    pref.c_str(),
+                    this,
+                    prefix.to_string(prefix_len).c_str());
+        if (is_leaf()) {
+            return;
+        }
 
-    	for (uint8_t bb = 0; bb < 16; bb++)
-    	{
-    		auto const* ptr = get_child(bb);
-    		if (ptr != nullptr)
-    		{
-    			std::printf("  %s child %p %u\n", pref.c_str(), ptr, bb);
-    			ptr -> log(std::string("  ") + pref);
-    		}
-    	}
+        for (uint8_t bb = 0; bb < 16; bb++) {
+            auto const* ptr = get_child(bb);
+            if (ptr != nullptr) {
+                std::printf("  %s child %p %u\n", pref.c_str(), ptr, bb);
+                ptr->log(std::string("  ") + pref);
+            }
+        }
     }
 };
 
-
-template<typename prefix_t, typename value_t, uint32_t TLCACHE_SIZE>
+template<typename prefix_t,
+         typename value_t,
+         uint32_t TLCACHE_SIZE,
+         SnapshotTrieMetadata metadata_t = SnapshotTrieMetadataBase>
 class AtomicMerkleTrie
 {
-	using node_t = AtomicMerkleTrieNode<prefix_t, value_t, TLCACHE_SIZE>;
-	using gc_t = AtomicMerkleTrieGC<prefix_t, value_t, TLCACHE_SIZE>;
+    using node_t = AtomicMerkleTrieNode<prefix_t, value_t, metadata_t>;
+    using gc_t = AtomicMerkleTrieGC<node_t, TLCACHE_SIZE>;
 
-	node_t* root;
+    node_t* root;
 
-	gc_t gc;
+    gc_t gc;
 
-public:
+  public:
+    template<typename InsertFn = OverwriteInsertFn<value_t>>
+    node_t* get_subnode_ref_and_invalidate_hash(const prefix_t& query_prefix,
+                                                const PrefixLenBits query_len)
+    {
+        auto* out = root->template get_or_make_subnode_ref<InsertFn>(
+            query_prefix, query_len, gc);
+        root->invalidate_hash_to_node(out);
+        return out;
+    }
 
-	template<typename InsertFn = OverwriteInsertFn<value_t>>
-	node_t* get_subnode_ref_and_invalidate_hash(const prefix_t& query_prefix, const PrefixLenBits query_len)
-	{
-		auto* out = root->template get_or_make_subnode_ref<InsertFn>(query_prefix, query_len, gc);
-		root -> invalidate_hash_to_node(out);
-		return out;
-	}
+    gc_t& get_gc() { return gc; }
 
-	gc_t& get_gc()
-	{
-		return gc;
-	}
+    AtomicMerkleTrie()
+        : root(new node_t())
+        , gc()
+    {}
 
-	AtomicMerkleTrie()
-		: root(new node_t())
-		, gc()
-		{}
+    void clear()
+    {
+        gc.free(root);
+        root = new node_t();
+        gc.gc();
+    }
 
-	void clear()
-	{
-		gc.free(root);
-		root = new node_t();
-		gc.gc();
-	}
+    void do_gc() { gc.gc(); }
 
-	void do_gc()
-	{
-		gc.gc();
-	}
+    ~AtomicMerkleTrie()
+    {
+        gc.free(root);
+        root = nullptr;
+        gc.gc();
+    }
 
-	~AtomicMerkleTrie()
-	{
-		gc.free(root);
-		root = nullptr;
-		gc.gc();
-	}
+    Hash hash_and_normalize()
+    {
+        std::vector<uint8_t> digest_bytes;
+        root->compute_hash_and_normalize(gc, digest_bytes);
+        return root->get_hash();
+    }
 
-	Hash hash_and_normalize()
-	{
-		std::vector<uint8_t> digest_bytes;
-		root -> compute_hash_and_normalize(gc, digest_bytes);
-		return root -> get_hash();
-	}
+    const value_t* get_value(prefix_t const& query) const
+    {
+        return root->get_value(query);
+    }
 
-	const value_t* get_value(prefix_t const& query) const
-	{
-		return root -> get_value(query);
-	}
-
-	value_t* get_value(prefix_t const& query)
-	{
-		return const_cast<value_t*>(
-			const_cast<const AtomicMerkleTrie<prefix_t, value_t, TLCACHE_SIZE>*>(this) -> get_value(query));
-	}
+    value_t* get_value(prefix_t const& query)
+    {
+        return const_cast<value_t*>(
+            const_cast<
+                const AtomicMerkleTrie<prefix_t, value_t, TLCACHE_SIZE>*>(this)
+                ->get_value(query));
+    }
 };
 
-#define AMTN_TEMPLATE template<typename prefix_t, typename value_t, uint32_t TLCACHE_SIZE>
-#define AMTN_DECL AtomicMerkleTrieNode<prefix_t, value_t, TLCACHE_SIZE>
+#define AMTN_TEMPLATE                                                          \
+    template<typename prefix_t,                                                \
+             typename value_t,                                                 \
+             SnapshotTrieMetadata metadata_t>
+#define AMTN_DECL AtomicMerkleTrieNode<prefix_t, value_t, metadata_t>
 
 AMTN_TEMPLATE
 template<typename InsertFn, typename InsertedValue>
 void
-AMTN_DECL::insert(
-	prefix_t const& new_prefix,
-	InsertedValue&& new_value,
-	gc_t& gc)
+AMTN_DECL::insert(prefix_t const& new_prefix,
+                  InsertedValue&& new_value,
+                  AMT_gc_t auto& gc)
 {
-	invalidate_hash();
+    invalidate_hash();
 
-	//std::printf("insert of %p to prefix %s cur prefix %s\n", &new_value, new_prefix.to_string(MAX_KEY_LEN_BITS).c_str(),
-	//	prefix.to_string(prefix_len).c_str());
+    // std::printf("insert of %p to prefix %s cur prefix %s\n", &new_value,
+    // new_prefix.to_string(MAX_KEY_LEN_BITS).c_str(),
+    //	prefix.to_string(prefix_len).c_str());
 
-	auto prefix_match_len = get_prefix_match_len(new_prefix);
-	trie_assert(prefix_match_len == prefix_len, "invalid insertion");
+    auto prefix_match_len = get_prefix_match_len(new_prefix);
+    trie_assert(prefix_match_len == prefix_len, "invalid insertion");
 
-	if (is_leaf())
-	{
-		InsertFn::value_insert(value, std::move(new_value));
-		validate_value();
-		return;
-	}
+    if (is_leaf()) {
+        InsertFn::value_insert(value, std::move(new_value));
+        validate_value();
+        return;
+    }
 
-	const uint8_t bb = new_prefix.get_branch_bits(prefix_len);
+    const uint8_t bb = new_prefix.get_branch_bits(prefix_len);
 
-	node_t* child = get_child(bb);
+    node_t* child = get_child(bb);
 
-	while(true)
-	{
+    while (true) {
 
-		if (child == nullptr)
-		{
-			// insert new node
-			node_t* new_node = new node_t(new_prefix, create_new_value<InsertFn, InsertedValue>(new_prefix, std::move(new_value)));
-			new_node -> validate_value();
+        if (child == nullptr) {
+            // insert new node
+            node_t* new_node
+                = new node_t(new_prefix,
+                             create_new_value<InsertFn, InsertedValue>(
+                                 new_prefix, std::move(new_value)));
+            new_node->validate_value();
 
-			if (try_add_child(bb, child, new_node))
-			{
-				// inserted new child
-				return;
-			}
-			// only reference to new_node is here, so we can delete freely.
-			delete new_node;
-			//gc.free(new_node);
-		} 
-		else
-		{
+            if (try_add_child(bb, child, new_node)) {
+                // inserted new child
+                return;
+            }
+            // only reference to new_node is here, so we can delete freely.
+            delete new_node;
+            // gc.free(new_node);
+        } else {
 
-			PrefixLenBits join_len = child->get_prefix_match_len(new_prefix);
+            PrefixLenBits join_len = child->get_prefix_match_len(new_prefix);
 
-			if (join_len >= child -> get_prefix_len())
-			{
-				child -> template insert<InsertFn>(new_prefix, std::move(new_value), gc);
-				return;
-			}
+            if (join_len >= child->get_prefix_len()) {
+                child->template insert<InsertFn, InsertedValue>(
+                    new_prefix, std::move(new_value), gc);
+                return;
+            }
 
-			node_t* new_node = new node_t(new_prefix, join_len);
-			new_node -> set_unique_child(child->get_prefix().get_branch_bits(join_len), child);
+            node_t* new_node = new node_t(new_prefix, join_len);
+            new_node->set_unique_child(
+                child->get_prefix().get_branch_bits(join_len), child);
 
-			if (try_add_child(bb, child, new_node))
-			{
-				new_node -> commit_ownership();
-				new_node -> template insert<InsertFn, InsertedValue>(new_prefix, std::move(new_value), gc);
-				return;
-			}
-			delete new_node;
-			// only reference to new_node is local
-			//gc.free(new_node);
-		}
-		__builtin_ia32_pause();
-	}
+            if (try_add_child(bb, child, new_node)) {
+                new_node->commit_ownership();
+                new_node->template insert<InsertFn, InsertedValue>(
+                    new_prefix, std::move(new_value), gc);
+                return;
+            }
+            delete new_node;
+            // only reference to new_node is local
+            // gc.free(new_node);
+        }
+        __builtin_ia32_pause();
+    }
 }
 
 AMTN_TEMPLATE
 void
-AMTN_DECL :: invalidate_hash_to_node(const node_t* target)
+AMTN_DECL ::invalidate_hash_to_node(const node_t* target)
 {
-	invalidate_hash();
-	if (target == this)
-	{
-		return;
-	}
+    invalidate_hash();
+    if (target == this) {
+        return;
+    }
 
-	auto match_len = get_prefix_match_len(target -> get_prefix(), target -> get_prefix_len());
+    auto match_len
+        = get_prefix_match_len(target->get_prefix(), target->get_prefix_len());
 
-	trie_assert(match_len == prefix_len, "invalid invalidate");
+    trie_assert(match_len == prefix_len, "invalid invalidate");
 
-	const uint8_t bb = target -> get_prefix().get_branch_bits(prefix_len);
+    const uint8_t bb = target->get_prefix().get_branch_bits(prefix_len);
 
-	node_t* child = get_child(bb);
-	trie_assert(child != nullptr, "found null child in invalidate_hash_to_node");
+    node_t* child = get_child(bb);
+    trie_assert(child != nullptr,
+                "found null child in invalidate_hash_to_node");
 
-	child -> invalidate_hash_to_node(target);
+    child->invalidate_hash_to_node(target);
 }
 
 AMTN_TEMPLATE
 void
-AMTN_DECL :: invalidate_hash_to_key(const prefix_t& query)
+AMTN_DECL ::invalidate_hash_to_key(const prefix_t& query)
 {
-	invalidate_hash();
+    invalidate_hash();
 
-	if (is_leaf())
-	{
-		trie_assert(prefix == query, "mismatch on invalidate_hash_to_key");
-		return;
-	}
+    if (is_leaf()) {
+        trie_assert(prefix == query, "mismatch on invalidate_hash_to_key");
+        return;
+    }
 
-	auto bb = query.get_branch_bits(prefix_len);
-	node_t* child = get_child(bb);
-	trie_assert(child != nullptr, "invalid child found");
+    auto bb = query.get_branch_bits(prefix_len);
+    node_t* child = get_child(bb);
+    trie_assert(child != nullptr, "invalid child found");
 
-	child -> invalidate_hash_to_key(query);
+    child->invalidate_hash_to_key(query);
 }
 
 AMTN_TEMPLATE
-uint8_t 
-AMTN_DECL :: get_num_children() const
+uint8_t
+AMTN_DECL ::get_num_children() const
 {
-	if (is_leaf())
-	{
-		if (value_valid)
-		{
-			return UINT8_MAX;
-		}
-		return 0;
-	}
-	uint8_t count = 0;
+    if (is_leaf()) {
+        if (value_valid) {
+            return UINT8_MAX;
+        }
+        return 0;
+    }
+    uint8_t count = 0;
 
-	for (uint8_t bb = 0; bb < 16; bb++)
-	{
-		if (get_child(bb) != nullptr)
-		{
-			count++;
-		}
-	}
-	return count;
+    for (uint8_t bb = 0; bb < 16; bb++) {
+        if (get_child(bb) != nullptr) {
+            count++;
+        }
+    }
+    return count;
 }
 
 AMTN_TEMPLATE
 AMTN_DECL*
-AMTN_DECL :: extract_singlechild()
+AMTN_DECL ::extract_singlechild()
 {
-	trie_assert(!is_leaf(), "invalid extract");
+    trie_assert(!is_leaf(), "invalid extract");
 
-	for (uint8_t bb = 0; bb < 16; bb++)
-	{
-		auto* ptr = get_child(bb);
-		if (ptr == nullptr) continue;
+    for (uint8_t bb = 0; bb < 16; bb++) {
+        auto* ptr = get_child(bb);
+        if (ptr == nullptr)
+            continue;
 
-		return children[bb].exchange(nullptr, std::memory_order_acq_rel);
-	}
+        return children[bb].exchange(nullptr, std::memory_order_acq_rel);
+    }
 
-	trie_assert(false, "there was no child");
-	throw std::runtime_error("invalid");
+    trie_assert(false, "there was no child");
+    throw std::runtime_error("invalid");
 }
 
 AMTN_TEMPLATE
 template<typename InsertFn>
-AMTN_DECL* 
-AMTN_DECL :: get_or_make_subnode_ref(const prefix_t& query_prefix, const PrefixLenBits query_len, gc_t& gc)
+AMTN_DECL*
+AMTN_DECL ::get_or_make_subnode_ref(const prefix_t& query_prefix,
+                                    const PrefixLenBits query_len,
+                                    AMT_gc_t auto& gc)
 {
-//	std::printf("get_or_make_subnode_ref: prefix %s query %s\n", 
-//		prefix.to_string(prefix_len).c_str(),
-//		query_prefix.to_string(query_len).c_str());
+    //	std::printf("get_or_make_subnode_ref: prefix %s query %s\n",
+    //		prefix.to_string(prefix_len).c_str(),
+    //		query_prefix.to_string(query_len).c_str());
 
-	auto matchlen = get_prefix_match_len(query_prefix, query_len);
+    auto matchlen = get_prefix_match_len(query_prefix, query_len);
 
-	trie_assert(matchlen >= prefix_len, "invalid get_or_make_subnode_ref");
+    trie_assert(matchlen >= prefix_len, "invalid get_or_make_subnode_ref");
 
-	if (query_len == prefix_len)
-	{
-		return this;
-	}
-
-	const uint8_t bb = query_prefix.get_branch_bits(prefix_len);
-
-	node_t* ptr = get_child(bb);
-
-	while (true)
-	{
-		if (ptr == nullptr)
-		{
-			node_t* new_child = nullptr;
-			if (query_len == MAX_KEY_LEN_BITS)
-			{
-				new_child = new node_t(query_prefix, InsertFn::new_value(query_prefix));
-			} 
-			else
-			{
-				new_child = new node_t(query_prefix, query_len);
-			}
-			if (try_add_child(bb, ptr, new_child))
-			{
-				new_child -> commit_ownership();
-				return new_child;
-			}
-			gc.free(new_child);
-		} 
-		else
-		{
-			//std::printf("child exists: %s\n", ptr -> get_prefix().to_string(ptr -> get_prefix_len()).c_str());
-			auto child_match_len = ptr -> get_prefix_match_len(query_prefix, query_len);
-			//std::printf("match len: %u\n", child_match_len.len);
-			if (child_match_len == ptr -> get_prefix_len())
-			{
-				return ptr -> template get_or_make_subnode_ref<InsertFn>(query_prefix, query_len, gc);
-			}
-			
-			node_t* intermediate = new node_t(query_prefix, child_match_len);
-			uint8_t child_bb = ptr -> get_prefix().get_branch_bits(child_match_len);
-			intermediate -> set_unique_child(child_bb, ptr);
-
-			if (try_add_child(bb, ptr, intermediate))
-			{
-				intermediate -> commit_ownership();
-
-				return intermediate -> template get_or_make_subnode_ref<InsertFn>(query_prefix, query_len, gc);
-			}
-			gc.free(intermediate);
-		}
-		__builtin_ia32_pause();
-	}
-}
-
-
-AMTN_TEMPLATE
-int32_t
-AMTN_DECL :: compute_hash_and_normalize(gc_t& gc, std::vector<uint8_t>& digest_bytes)
-{
-	if (hash_valid)
-	{
-		return size;
-	}
-
-	if (is_leaf())
-	{
-		if (!value_valid)
-		{
-			return 0;
-		}
-
-		digest_bytes.clear();
-
-		write_node_header(digest_bytes, prefix, prefix_len);
-        value.copy_data(digest_bytes);
-
-        if (crypto_generichash(
-        	hash.data(),
-           hash.size(),
-           digest_bytes.data(),
-           digest_bytes.size(),
-           NULL,
-           0) 
-        != 0) {
-        	throw std::runtime_error("error from crypto_generichash");
-    	}
-    	hash_valid = true;
-    	size = 1;
-    //	size.exchange(1, std::memory_order_acq_rel);
-    	return 1;
-	}
-
-	int32_t new_size = 0;
-
-	int32_t num_children = 0;
-	TrieBitVector bv;
-
-	for (uint8_t bb = 0; bb < 16; bb++)
-	{
-		node_t* child = get_child(bb);
-		if (child == nullptr) continue;
-
-		new_size += child -> compute_hash_and_normalize(gc, digest_bytes);
-
-		uint8_t child_count = child -> get_num_children();
-		if (child_count == 0)
-		{
-			erase_child(bb, gc);
-		} 
-		else if (child_count == 1)
-		{
-			node_t* new_child = child -> extract_singlechild();
-
-			gc.free(child);
-
-			trie_assert(try_add_child(bb, child, new_child), "concurrency fail");
-
-			bv.add(bb);
-			num_children++;
-		}
-		else
-		{
-			bv.add(bb);
-			num_children ++;
-		}
-	}
-	size = new_size;
-
-	//size.store(new_size, std::memory_order_release);
-	if (num_children <= 1 && prefix_len.len != 0)
-	{
-		// don't bother hashing, except special casing the root node
-		return new_size;
-	}
-
-	digest_bytes.clear();
-
-	write_node_header(digest_bytes, prefix, prefix_len);
-    bv.write(digest_bytes);
-
-    for (uint8_t bb = 0; bb < 16; bb++)
-    {
-    	auto* ptr = get_child(bb);
-    	if (ptr == nullptr) continue;
-
-    	ptr -> append_hash_to_vec(digest_bytes);
+    if (query_len == prefix_len) {
+        return this;
     }
 
-    if (crypto_generichash(
-    	hash.data(),
-       hash.size(),
-       digest_bytes.data(),
-       digest_bytes.size(),
-       NULL,
-       0) 
-    != 0) {
-    	throw std::runtime_error("error from crypto_generichash");
-	}
+    const uint8_t bb = query_prefix.get_branch_bits(prefix_len);
 
-	hash_valid = true;
+    node_t* ptr = get_child(bb);
 
-	return new_size;
+    while (true) {
+        if (ptr == nullptr) {
+            node_t* new_child = nullptr;
+            if (query_len == MAX_KEY_LEN_BITS) {
+                new_child = new node_t(query_prefix,
+                                       InsertFn::new_value(query_prefix));
+            } else {
+                new_child = new node_t(query_prefix, query_len);
+            }
+            if (try_add_child(bb, ptr, new_child)) {
+                new_child->commit_ownership();
+                return new_child;
+            }
+            gc.free(new_child);
+        } else {
+            // std::printf("child exists: %s\n", ptr ->
+            // get_prefix().to_string(ptr -> get_prefix_len()).c_str());
+            auto child_match_len
+                = ptr->get_prefix_match_len(query_prefix, query_len);
+            // std::printf("match len: %u\n", child_match_len.len);
+            if (child_match_len == ptr->get_prefix_len()) {
+                return ptr->template get_or_make_subnode_ref<InsertFn>(
+                    query_prefix, query_len, gc);
+            }
+
+            node_t* intermediate = new node_t(query_prefix, child_match_len);
+            uint8_t child_bb
+                = ptr->get_prefix().get_branch_bits(child_match_len);
+            intermediate->set_unique_child(child_bb, ptr);
+
+            if (try_add_child(bb, ptr, intermediate)) {
+                intermediate->commit_ownership();
+
+                return intermediate->template get_or_make_subnode_ref<InsertFn>(
+                    query_prefix, query_len, gc);
+            }
+            gc.free(intermediate);
+        }
+        __builtin_ia32_pause();
+    }
+}
+
+AMTN_TEMPLATE
+const metadata_t&
+AMTN_DECL ::compute_hash_and_normalize(AMT_gc_t auto& gc,
+                                       std::vector<uint8_t>& digest_bytes)
+{
+    if (hash_valid) {
+        return metadata;
+    }
+
+    if (is_leaf()) {
+        if (!value_valid) {
+            metadata.size = 0;
+            return metadata;
+        }
+
+        digest_bytes.clear();
+
+        write_node_header(digest_bytes, prefix, prefix_len);
+        value.copy_data(digest_bytes);
+
+        // sets size = 1
+        metadata.from_value(value);
+
+        if (crypto_generichash(metadata.hash.data(),
+                               metadata.hash.size(),
+                               digest_bytes.data(),
+                               digest_bytes.size(),
+                               NULL,
+                               0)
+            != 0) {
+            throw std::runtime_error("error from crypto_generichash");
+        }
+        // metadata.size = 1;
+        hash_valid = true;
+        //	size = 1;
+        //	size.exchange(1, std::memory_order_acq_rel);
+        return metadata;
+    }
+
+    metadata_t new_metadata;
+    // int32_t new_size = 0;
+
+    int32_t num_children = 0;
+    TrieBitVector bv;
+
+    for (uint8_t bb = 0; bb < 16; bb++) {
+        node_t* child = get_child(bb);
+        if (child == nullptr)
+            continue;
+
+        new_metadata += child->compute_hash_and_normalize(gc, digest_bytes);
+
+        uint8_t child_count = child->get_num_children();
+        if (child_count == 0) {
+            erase_child(bb, gc);
+        } else if (child_count == 1) {
+            node_t* new_child = child->extract_singlechild();
+
+            gc.free(child);
+
+            trie_assert(try_add_child(bb, child, new_child),
+                        "concurrency fail");
+
+            bv.add(bb);
+            num_children++;
+        } else {
+            bv.add(bb);
+            num_children++;
+        }
+    }
+    metadata = new_metadata;
+    // metadata.size = new_size;
+
+    // size.store(new_size, std::memory_order_release);
+    if (num_children <= 1 && prefix_len.len != 0) {
+        // don't bother hashing, except special casing the root node
+        return metadata;
+    }
+
+    digest_bytes.clear();
+
+    write_node_header(digest_bytes, prefix, prefix_len);
+    bv.write(digest_bytes);
+
+    for (uint8_t bb = 0; bb < 16; bb++) {
+        auto* ptr = get_child(bb);
+        if (ptr == nullptr)
+            continue;
+
+        ptr->append_hash_to_vec(digest_bytes);
+    }
+
+    if (crypto_generichash(metadata.hash.data(),
+                           metadata.hash.size(),
+                           digest_bytes.data(),
+                           digest_bytes.size(),
+                           NULL,
+                           0)
+        != 0) {
+        throw std::runtime_error("error from crypto_generichash");
+    }
+
+    hash_valid = true;
+
+    return metadata;
 }
 
 AMTN_TEMPLATE
 void
-AMTN_DECL :: delete_value(const prefix_t& delete_prefix, gc_t& gc)
+AMTN_DECL ::delete_value(const prefix_t& delete_prefix, AMT_gc_t auto& gc)
 {
-	invalidate_hash();
+    invalidate_hash();
 
-	if (is_leaf())
-	{
-		trie_assert(delete_prefix == prefix, "mismatch");
-		value_valid = false;
-		return;
-	}
+    if (is_leaf()) {
+        trie_assert(delete_prefix == prefix, "mismatch");
+        value_valid = false;
+        return;
+    }
 
-	auto bb = delete_prefix.get_branch_bits(prefix_len);
+    auto bb = delete_prefix.get_branch_bits(prefix_len);
 
-	auto* ptr = get_child(bb);
-	trie_assert(ptr != nullptr, "must exist");
+    auto* ptr = get_child(bb);
+    trie_assert(ptr != nullptr, "must exist");
 
-	if (ptr -> is_leaf()
-		&& ptr -> get_prefix() == delete_prefix)
-	{
-		auto* prev = children[bb].exchange(nullptr, std::memory_order_acq_rel);
-		if (prev) {
-			gc.free(prev);
-		}
-		return;
-	}
+    if (ptr->is_leaf() && ptr->get_prefix() == delete_prefix) {
+        auto* prev = children[bb].exchange(nullptr, std::memory_order_acq_rel);
+        if (prev) {
+            gc.free(prev);
+        }
+        return;
+    }
 
-	ptr -> delete_value(delete_prefix, gc);
+    ptr->delete_value(delete_prefix, gc);
 }
 
 AMTN_TEMPLATE
-const value_t* 
+const value_t*
 AMTN_DECL::get_value(const prefix_t& query_prefix) const
 {
-	if (is_leaf())
-	{
-		if (query_prefix == prefix && value_valid)
-		{
-			return &value;
-		}
-		return nullptr;
-	}
+    if (is_leaf()) {
+        if (query_prefix == prefix && value_valid) {
+            return &value;
+        }
+        return nullptr;
+    }
 
-	auto match_len = get_prefix_match_len(query_prefix);
+    auto match_len = get_prefix_match_len(query_prefix);
 
-	if (match_len < prefix_len)
-	{
-		return nullptr;
-	}
+    if (match_len < prefix_len) {
+        return nullptr;
+    }
 
-	const auto bb = query_prefix.get_branch_bits(prefix_len);
+    const auto bb = query_prefix.get_branch_bits(prefix_len);
 
-	auto* ptr = get_child(bb);
-	if (ptr == nullptr)
-	{
-		return nullptr;
-	}
-	return ptr -> get_value(query_prefix);
+    auto* ptr = get_child(bb);
+    if (ptr == nullptr) {
+        return nullptr;
+    }
+    return ptr->get_value(query_prefix);
 }
-
-
 
 #undef AMTN_DECL
 #undef AMTN_TEMPLATE
