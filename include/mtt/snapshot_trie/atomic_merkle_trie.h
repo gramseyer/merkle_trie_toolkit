@@ -11,6 +11,7 @@
 #include <array>
 #include <atomic>
 #include <cstdint>
+#include <utility>
 
 #include <utils/threadlocal_cache.h>
 
@@ -71,7 +72,7 @@ class AtomicMerkleTrieNode
     union
     {
         std::array<std::atomic<node_t*>, 16> children;
-        value_t value;
+        std::optional<value_t> value;
     };
 
     const prefix_t prefix;
@@ -79,7 +80,7 @@ class AtomicMerkleTrieNode
 
     std::atomic<bool> hash_valid;
     bool children_owned = false;
-    bool value_valid = false;
+   // bool value_valid = false;
 
     metadata_t metadata;
     // int32_t size;
@@ -91,9 +92,22 @@ class AtomicMerkleTrieNode
         = PrefixLenBits{ KEY_LEN_BYTES * 8 };
 
   public:
+    struct value_nullopt_t {};
+
+    AtomicMerkleTrieNode(prefix_t const& prefix, value_nullopt_t const&)
+        : value(std::nullopt)
+        , prefix(prefix)
+        , prefix_len(MAX_KEY_LEN_BITS)
+        , hash_valid(false)
+        , children_owned(false)
+        , metadata()
+    {
+    }
+
+    template<typename... value_args>
     // value node
-    AtomicMerkleTrieNode(prefix_t const& prefix, value_t&& value)
-        : value(std::move(value))
+    AtomicMerkleTrieNode(prefix_t const& prefix, value_args const& ...args)
+        : value(std::in_place_t{}, args...)
         , prefix(prefix)
         , prefix_len(MAX_KEY_LEN_BITS)
         , hash_valid(false)
@@ -103,22 +117,27 @@ class AtomicMerkleTrieNode
     //, hash()
     {}
 
+    struct map_node_args_t {
+        prefix_t const& prefix;
+        PrefixLenBits len;
+    };
+
     // map node
-    AtomicMerkleTrieNode(prefix_t const& prefix, PrefixLenBits len)
+    AtomicMerkleTrieNode(map_node_args_t const& args)
         : children()
-        , prefix([len](const prefix_t& p) -> prefix_t {
+        , prefix([args](const prefix_t& p) -> prefix_t {
             prefix_t out = p;
-            out.truncate(len);
+            out.truncate(args.len);
             return out;
-        }(prefix))
-        , prefix_len(len)
+        }(args.prefix))
+        , prefix_len(args.len)
         , hash_valid(false)
         , children_owned(false)
         , metadata()
     //, size(0)
     //, hash()
     {
-        if (len == MAX_KEY_LEN_BITS) {
+        if (prefix_len == MAX_KEY_LEN_BITS) {
             throw std::runtime_error("wrong ctor used");
         }
     }
@@ -142,8 +161,9 @@ class AtomicMerkleTrieNode
     //, hash()
     {}
 
-    void validate_value() { value_valid = true; }
+    void validate_value() {};// value_valid = true; }
 
+/*
     template<typename InsertFn, typename InsertedValueType>
     static value_t create_new_value(
         const prefix_t& key,
@@ -163,7 +183,7 @@ class AtomicMerkleTrieNode
                                 InsertedValueType&&>::type v)
     {
         return v;
-    }
+    } */
 
     void commit_ownership() { children_owned = true; }
 
@@ -178,8 +198,9 @@ class AtomicMerkleTrieNode
 
     ~AtomicMerkleTrieNode()
     {
+        using dtor_t = std::optional<value_t>;
         if (is_leaf()) {
-            value.~value_t();
+            value.~dtor_t();
         } else {
             if (children_owned) {
                 for (uint8_t bb = 0; bb < 16; bb++) {
@@ -194,10 +215,10 @@ class AtomicMerkleTrieNode
 
     bool is_leaf() const { return prefix_len == MAX_KEY_LEN_BITS; }
 
-    template<typename InsertFn, typename InsertedValue>
+    template<auto value_merge_fn, typename... value_args>
     void insert(prefix_t const& new_prefix,
-                InsertedValue&& value,
-                AMT_gc_t auto& gc);
+                AMT_gc_t auto& gc,
+                value_args const& ...args);
 
     const metadata_t& compute_hash_and_normalize(
         AMT_gc_t auto& gc,
@@ -247,7 +268,6 @@ class AtomicMerkleTrieNode
     void invalidate_hash_to_node(const node_t* target);
     void invalidate_hash_to_key(const prefix_t& query);
 
-    template<typename InsertFn>
     node_t* get_or_make_subnode_ref(const prefix_t& query_prefix,
                                     const PrefixLenBits query_len,
                                     AMT_gc_t auto& gc);
@@ -275,6 +295,13 @@ class AtomicMerkleTrieNode
     void delete_value(const prefix_t& delete_prefix, AMT_gc_t auto& gc);
 
     const value_t* get_value(const prefix_t& query_prefix) const;
+
+    value_t* get_value(prefix_t const& query)
+    {
+        return const_cast<value_t*>(
+            const_cast<const node_t*>(this)
+                ->get_value(query));
+    }
 
     void log(std::string pref) const
     {
@@ -310,11 +337,10 @@ class AtomicMerkleTrie
     gc_t gc;
 
   public:
-    template<typename InsertFn = OverwriteInsertFn<value_t>>
     node_t* get_subnode_ref_and_invalidate_hash(const prefix_t& query_prefix,
                                                 const PrefixLenBits query_len)
     {
-        auto* out = root->template get_or_make_subnode_ref<InsertFn>(
+        auto* out = root->template get_or_make_subnode_ref(
             query_prefix, query_len, gc);
         root->invalidate_hash_to_node(out);
         return out;
@@ -359,7 +385,7 @@ class AtomicMerkleTrie
     {
         return const_cast<value_t*>(
             const_cast<
-                const AtomicMerkleTrie<prefix_t, value_t, TLCACHE_SIZE>*>(this)
+                const AtomicMerkleTrie<prefix_t, value_t, TLCACHE_SIZE, metadata_t>*>(this)
                 ->get_value(query));
     }
 };
@@ -371,11 +397,11 @@ class AtomicMerkleTrie
 #define AMTN_DECL AtomicMerkleTrieNode<prefix_t, value_t, metadata_t>
 
 AMTN_TEMPLATE
-template<typename InsertFn, typename InsertedValue>
+template<auto value_merge_fn, typename... value_args>
 void
 AMTN_DECL::insert(prefix_t const& new_prefix,
-                  InsertedValue&& new_value,
-                  AMT_gc_t auto& gc)
+                  AMT_gc_t auto& gc,
+                  value_args const& ...args)
 {
     invalidate_hash();
 
@@ -387,7 +413,13 @@ AMTN_DECL::insert(prefix_t const& new_prefix,
     trie_assert(prefix_match_len == prefix_len, "invalid insertion");
 
     if (is_leaf()) {
-        InsertFn::value_insert(value, std::move(new_value));
+        if (value.has_value())
+        {
+            value_merge_fn(*value, args...);
+        }
+        else {
+            value.emplace(args...);
+        }
         validate_value();
         return;
     }
@@ -402,8 +434,7 @@ AMTN_DECL::insert(prefix_t const& new_prefix,
             // insert new node
             node_t* new_node
                 = new node_t(new_prefix,
-                             create_new_value<InsertFn, InsertedValue>(
-                                 new_prefix, std::move(new_value)));
+                            args...);
             new_node->validate_value();
 
             if (try_add_child(bb, child, new_node)) {
@@ -412,30 +443,32 @@ AMTN_DECL::insert(prefix_t const& new_prefix,
             }
             // only reference to new_node is here, so we can delete freely.
             delete new_node;
-            // gc.free(new_node);
         } else {
 
             PrefixLenBits join_len = child->get_prefix_match_len(new_prefix);
 
             if (join_len >= child->get_prefix_len()) {
-                child->template insert<InsertFn, InsertedValue>(
-                    new_prefix, std::move(new_value), gc);
+                child -> template insert<value_merge_fn, value_args...>(
+                    new_prefix, gc, args...);
+               // child->template insert<InsertFn, InsertedValue>(
+               //     new_prefix, std::move(new_value), gc);
                 return;
             }
 
-            node_t* new_node = new node_t(new_prefix, join_len);
+            node_t* new_node = new node_t(map_node_args_t{new_prefix, join_len});
             new_node->set_unique_child(
                 child->get_prefix().get_branch_bits(join_len), child);
 
             if (try_add_child(bb, child, new_node)) {
                 new_node->commit_ownership();
-                new_node->template insert<InsertFn, InsertedValue>(
-                    new_prefix, std::move(new_value), gc);
+                new_node -> template insert<value_merge_fn, value_args...>(
+                    new_prefix, gc, args...);
+                //new_node->template insert<InsertFn, InsertedValue>(
+                //    new_prefix, std::move(new_value), gc);
                 return;
             }
             delete new_node;
             // only reference to new_node is local
-            // gc.free(new_node);
         }
         __builtin_ia32_pause();
     }
@@ -487,7 +520,7 @@ uint8_t
 AMTN_DECL ::get_num_children() const
 {
     if (is_leaf()) {
-        if (value_valid) {
+        if (value.has_value()) {
             return UINT8_MAX;
         }
         return 0;
@@ -521,7 +554,6 @@ AMTN_DECL ::extract_singlechild()
 }
 
 AMTN_TEMPLATE
-template<typename InsertFn>
 AMTN_DECL*
 AMTN_DECL ::get_or_make_subnode_ref(const prefix_t& query_prefix,
                                     const PrefixLenBits query_len,
@@ -547,10 +579,10 @@ AMTN_DECL ::get_or_make_subnode_ref(const prefix_t& query_prefix,
         if (ptr == nullptr) {
             node_t* new_child = nullptr;
             if (query_len == MAX_KEY_LEN_BITS) {
-                new_child = new node_t(query_prefix,
-                                       InsertFn::new_value(query_prefix));
+                new_child = new node_t(query_prefix, value_nullopt_t{});
+                                      // InsertFn::new_value(query_prefix));
             } else {
-                new_child = new node_t(query_prefix, query_len);
+                new_child = new node_t(map_node_args_t{query_prefix, query_len});
             }
             if (try_add_child(bb, ptr, new_child)) {
                 new_child->commit_ownership();
@@ -564,11 +596,11 @@ AMTN_DECL ::get_or_make_subnode_ref(const prefix_t& query_prefix,
                 = ptr->get_prefix_match_len(query_prefix, query_len);
             // std::printf("match len: %u\n", child_match_len.len);
             if (child_match_len == ptr->get_prefix_len()) {
-                return ptr->template get_or_make_subnode_ref<InsertFn>(
+                return ptr->get_or_make_subnode_ref(
                     query_prefix, query_len, gc);
             }
 
-            node_t* intermediate = new node_t(query_prefix, child_match_len);
+            node_t* intermediate = new node_t(map_node_args_t{query_prefix, child_match_len});
             uint8_t child_bb
                 = ptr->get_prefix().get_branch_bits(child_match_len);
             intermediate->set_unique_child(child_bb, ptr);
@@ -576,7 +608,7 @@ AMTN_DECL ::get_or_make_subnode_ref(const prefix_t& query_prefix,
             if (try_add_child(bb, ptr, intermediate)) {
                 intermediate->commit_ownership();
 
-                return intermediate->template get_or_make_subnode_ref<InsertFn>(
+                return intermediate->get_or_make_subnode_ref(
                     query_prefix, query_len, gc);
             }
             gc.free(intermediate);
@@ -595,7 +627,7 @@ AMTN_DECL ::compute_hash_and_normalize(AMT_gc_t auto& gc,
     }
 
     if (is_leaf()) {
-        if (!value_valid) {
+        if (!value.has_value()) {
             metadata.size = 0;
             return metadata;
         }
@@ -603,10 +635,10 @@ AMTN_DECL ::compute_hash_and_normalize(AMT_gc_t auto& gc,
         digest_bytes.clear();
 
         write_node_header(digest_bytes, prefix, prefix_len);
-        value.copy_data(digest_bytes);
+        value->copy_data(digest_bytes);
 
         // sets size = 1
-        metadata.from_value(value);
+        metadata.from_value(*value);
 
         if (crypto_generichash(metadata.hash.data(),
                                metadata.hash.size(),
@@ -700,7 +732,8 @@ AMTN_DECL ::delete_value(const prefix_t& delete_prefix, AMT_gc_t auto& gc)
 
     if (is_leaf()) {
         trie_assert(delete_prefix == prefix, "mismatch");
-        value_valid = false;
+        value.reset();
+       // value_valid = false;
         return;
     }
 
@@ -725,8 +758,8 @@ const value_t*
 AMTN_DECL::get_value(const prefix_t& query_prefix) const
 {
     if (is_leaf()) {
-        if (query_prefix == prefix && value_valid) {
-            return &value;
+        if (query_prefix == prefix && value.has_value()) {
+            return &(*value);
         }
         return nullptr;
     }

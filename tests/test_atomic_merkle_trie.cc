@@ -57,6 +57,8 @@ TEST_CASE("normalize cleans up in case of no inserts", "[amt]")
 	REQUIRE(h1 == h2);
 }
 
+void overwrite_merge_fn(EmptyValue& a, const EmptyValue& b) {}
+
 TEST_CASE("check inserts", "[amt]")
 {
 	using mt = AtomicMerkleTrie<UInt64Prefix, EmptyValue, 256>;
@@ -69,7 +71,7 @@ TEST_CASE("check inserts", "[amt]")
 	{
 		uint64_t query = (i * 17) % 6701;  //6701 is prime
 
-		root -> template insert<OverwriteInsertFn<EmptyValue>, EmptyValue>(UInt64Prefix(query), EmptyValue{}, m.get_gc());
+		root -> template insert<&overwrite_merge_fn>(UInt64Prefix(query), m.get_gc(), EmptyValue{});
 	}
 
 	auto h1 = m.hash_and_normalize();
@@ -96,13 +98,13 @@ TEST_CASE("force recompute", "[amt]")
 
 	auto* base = m.get_subnode_ref_and_invalidate_hash(UInt64Prefix(0), PrefixLenBits(60));
 
-	base -> template insert<OverwriteInsertFn<EmptyValue>>(UInt64Prefix(0x0), EmptyValue{}, m.get_gc());
+	base -> template insert<&overwrite_merge_fn>(UInt64Prefix(0x0), m.get_gc(), EmptyValue{});
 
 	auto h2 = m.hash_and_normalize();
 
 	REQUIRE(h1 != h2);
 
-	base -> template insert<OverwriteInsertFn<EmptyValue>>(UInt64Prefix(0x0), EmptyValue{}, m.get_gc());
+	base -> template insert<&overwrite_merge_fn>(UInt64Prefix(0x0), m.get_gc(), EmptyValue{});
 
 	REQUIRE(h2 == m.hash_and_normalize());
 }
@@ -117,7 +119,7 @@ TEST_CASE("ensure full length key", "[amt]")
 
 	auto* base = m.get_subnode_ref_and_invalidate_hash(UInt64Prefix(0), PrefixLenBits(64));
 
-	base -> template insert<OverwriteInsertFn<EmptyValue>>(UInt64Prefix(0), EmptyValue{}, m.get_gc());
+	base -> template insert<&overwrite_merge_fn>(UInt64Prefix(0), m.get_gc(), EmptyValue{});
 
 	auto h2 = m.hash_and_normalize();
 
@@ -130,7 +132,6 @@ TEST_CASE("get proper length subnode")
 	mt m;
 
 	using prefix_t = UInt64Prefix;
-	using InsertFn = OverwriteInsertFn<EmptyValue>;
 
 	SECTION("from empty")
 	{
@@ -149,8 +150,8 @@ TEST_CASE("get proper length subnode")
 	{
 		{
 			auto* b = m.get_subnode_ref_and_invalidate_hash(prefix_t(0), PrefixLenBits(0));
-			b -> template insert<InsertFn>(prefix_t(0x0000'0000'0000'0000), EmptyValue{}, m.get_gc());
-			b -> template insert<InsertFn>(prefix_t(0x1000'0000'0000'0000), EmptyValue{}, m.get_gc());
+			b -> template insert<&overwrite_merge_fn>(prefix_t(0x0000'0000'0000'0000), m.get_gc(), EmptyValue{});
+			b -> template insert<&overwrite_merge_fn>(prefix_t(0x1000'0000'0000'0000), m.get_gc(), EmptyValue{});
 		}
 
 		auto h1 = m.hash_and_normalize();
@@ -178,8 +179,8 @@ TEST_CASE("get proper length subnode")
 	{
 		{
 			auto* b = m.get_subnode_ref_and_invalidate_hash(prefix_t(0), PrefixLenBits(0));
-			b -> template insert<InsertFn>(prefix_t(0xFFFF'0000'0000'FFFF), EmptyValue{}, m.get_gc());
-			b -> template insert<InsertFn>(prefix_t(0xFFFF'0000'0000'0000), EmptyValue{}, m.get_gc());
+			b -> template insert<&overwrite_merge_fn>(prefix_t(0xFFFF'0000'0000'FFFF),  m.get_gc(), EmptyValue{});
+			b -> template insert<&overwrite_merge_fn>(prefix_t(0xFFFF'0000'0000'0000),  m.get_gc(), EmptyValue{});
 		}
 
 		auto h1 = m.hash_and_normalize();
@@ -215,7 +216,7 @@ TEST_CASE("deletions", "[amt]")
 	SECTION("single elt")
 	{
 
-		root -> template insert<OverwriteInsertFn<EmptyValue>>(UInt64Prefix(0x0000'0000'0000'0000), EmptyValue{}, m.get_gc());
+		root -> template insert<&overwrite_merge_fn>(UInt64Prefix(0x0000'0000'0000'0000), m.get_gc(), EmptyValue{});
 
 		root -> delete_value(UInt64Prefix(0x0000'0000'0000'0000), m.get_gc());
 
@@ -224,13 +225,13 @@ TEST_CASE("deletions", "[amt]")
 
 	SECTION("several elt")
 	{
-		root -> template insert<OverwriteInsertFn<EmptyValue>>(UInt64Prefix(0x0000'0000'0000'0000), EmptyValue{}, m.get_gc());
-		root -> template insert<OverwriteInsertFn<EmptyValue>>(UInt64Prefix(0x0000'0000'0000'1111), EmptyValue{}, m.get_gc());
+		root -> template insert<&overwrite_merge_fn>(UInt64Prefix(0x0000'0000'0000'0000), m.get_gc(), EmptyValue{});
+		root -> template insert<&overwrite_merge_fn>(UInt64Prefix(0x0000'0000'0000'1111), m.get_gc(), EmptyValue{});
 
 		h = m.hash_and_normalize();
 		root = m.get_subnode_ref_and_invalidate_hash(UInt64Prefix(0), PrefixLenBits(32));
 
-		root -> template insert<OverwriteInsertFn<EmptyValue>>(UInt64Prefix(0x0000'0000'0000'2222), EmptyValue{}, m.get_gc());
+		root -> template insert<&overwrite_merge_fn>(UInt64Prefix(0x0000'0000'0000'2222), m.get_gc(), EmptyValue{});
 
 		root -> delete_value(UInt64Prefix(0x0000'0000'0000'2222), m.get_gc());
 
@@ -244,8 +245,8 @@ TEST_CASE("deletions", "[amt]")
 		m.get_subnode_ref_and_invalidate_hash(UInt64Prefix(0), PrefixLenBits(44));
 		m.get_subnode_ref_and_invalidate_hash(UInt64Prefix(0), PrefixLenBits(48));
 
-		root -> template insert<OverwriteInsertFn<EmptyValue>>(UInt64Prefix(0x0000'0000'0000'2222), EmptyValue{}, m.get_gc());
-		root -> template insert<OverwriteInsertFn<EmptyValue>>(UInt64Prefix(0x0000'0000'0000'1111), EmptyValue{}, m.get_gc());
+		root -> template insert<&overwrite_merge_fn>(UInt64Prefix(0x0000'0000'0000'2222), m.get_gc(), EmptyValue{});
+		root -> template insert<&overwrite_merge_fn>(UInt64Prefix(0x0000'0000'0000'1111), m.get_gc(), EmptyValue{});
 
 		root -> delete_value(UInt64Prefix(0x0000'0000'0000'2222), m.get_gc());
 		root -> delete_value(UInt64Prefix(0x0000'0000'0000'1111), m.get_gc());
