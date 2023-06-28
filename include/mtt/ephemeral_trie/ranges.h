@@ -98,7 +98,7 @@ struct EphemeralTrieAccumulateValuesRange
 
 // Main difference with hash range is accounting for subnodes marked deleted.
 // No nodes in work_list overlap, even after splitting
-template<typename TrieT>
+template<typename TrieT, PrefixLenBits max_split_len>
 struct EphemeralTrieApplyRange
 {
     using allocator_t = typename TrieT::allocator_t;
@@ -111,9 +111,11 @@ struct EphemeralTrieApplyRange
 
     const uint32_t GRAIN_SIZE;
 
+    bool splittable = true;
+
     bool empty() const { return work_size == 0; }
 
-    bool is_divisible() const { return work_size > GRAIN_SIZE; }
+    bool is_divisible() const { return (work_size > GRAIN_SIZE) && splittable; }
 
     EphemeralTrieApplyRange(const TrieT* work_root, const allocator_t& allocator, uint32_t GRAIN_SIZE)
         : work_list(work_root -> children_and_sizes_list())
@@ -148,6 +150,13 @@ struct EphemeralTrieApplyRange
                 utils::print_assert(
                     other.work_list[0] >> 32 != UINT32_MAX,
                     "found nullptr in EphemeralTrieApplyRange");
+
+                auto const& obj = allocator.get_object(other.work_list.at(0) >> 32);
+                if (obj.get_prefix_len() >= max_split_len)
+                {
+                    splittable = false;
+                    return;
+                }
    
                 other.work_list = allocator.get_object(other.work_list.at(0) >> 32)
                                       .children_and_sizes_list();
@@ -170,8 +179,7 @@ class EphemeralTrieHashRange
 {
 
     uint32_t num_children;
-    using allocator_t = typename TrieT::allocator_t;//RecyclingTrieNodeAllocator<TrieT>;
-    //using ptr_t = TrieT::ptr_t;
+    using allocator_t = typename TrieT::allocator_t;
 
     allocator_t& allocator;
 
@@ -220,8 +228,6 @@ class EphemeralTrieHashRange
                 {
                     other.nodes.push_back(&allocator.get_object(ptr));
                 }
-               // other.nodes
-                //    = allocator.get_object(other.nodes[0]).children_list();
             }
             if (other.nodes.size() == 0) {
                 std::printf("other.nodes.size() = 0!\n");
@@ -230,7 +236,7 @@ class EphemeralTrieHashRange
 
             nodes.push_back(other.nodes[0]);
             other.nodes.erase(other.nodes.begin());
-            auto sz = nodes.back() -> size(); //allocator.get_object(nodes.back()).size();
+            auto sz = nodes.back() -> size();
             num_children += sz;
             other.num_children -= sz;
         }

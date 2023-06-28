@@ -376,10 +376,10 @@ class AtomicTrie
         return hash_serial();
     }
 
-    template<typename ValueModifyFn>
+    template<typename ValueModifyFn, PrefixLenBits max_split_len>
     void parallel_batch_value_modify_const(ValueModifyFn& fn, uint32_t GRAIN_SIZE) const
     {
-        EphemeralTrieApplyRange<node_t> range(&root, allocator, GRAIN_SIZE);
+        EphemeralTrieApplyRange<node_t, max_split_len> range(&root, allocator, GRAIN_SIZE);
         // guaranteed that range.work_list contains no overlaps
 
         tbb::parallel_for(range, [&fn, this](const auto& range) {
@@ -393,10 +393,10 @@ class AtomicTrie
         });
     }
 
-    template<typename ValueModifyFn>
+    template<typename ValueModifyFn, PrefixLenBits max_split_len>
     void parallel_batch_value_modify(ValueModifyFn& fn, uint32_t GRAIN_SIZE)
     {
-        EphemeralTrieApplyRange<node_t> range(&root, allocator, GRAIN_SIZE);
+        EphemeralTrieApplyRange<node_t, max_split_len> range(&root, allocator, GRAIN_SIZE);
         // guaranteed that range.work_list contains no overlaps
 
         tbb::parallel_for(range, [&fn, this](const auto& range) {
