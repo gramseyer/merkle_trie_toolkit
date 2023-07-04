@@ -46,6 +46,8 @@ class MemcacheTrieNode
     std::atomic<bool> metadata_valid;
     std::atomic<uint32_t> last_updated_timestamp;
 
+    uint32_t last_logged_timestamp;
+
     bool children_owned = false;
     metadata_t metadata;
 
@@ -70,6 +72,7 @@ class MemcacheTrieNode
         , prefix_len(MAX_KEY_LEN_BITS)
         , metadata_valid(false)
         , last_updated_timestamp(ts)
+        , last_logged_timestamp(0)
         , children_owned(false)
         , metadata()
     {}
@@ -84,6 +87,7 @@ class MemcacheTrieNode
         , prefix_len(MAX_KEY_LEN_BITS)
         , metadata_valid(false)
         , last_updated_timestamp(ts)
+        , last_logged_timestamp(0)
         , children_owned(false)
         , metadata()
     {}
@@ -117,6 +121,7 @@ class MemcacheTrieNode
         prefix_t const& prefix;
         PrefixLenBits prefix_len;
         metadata_t const& metadata;
+        uint32_t last_logged_timestamp;
     };
 
     // ptr node
@@ -126,6 +131,7 @@ class MemcacheTrieNode
         , prefix_len(args.prefix_len)
         , metadata_valid(true)
         , last_updated_timestamp(args.tsp.timestamp)
+        , last_logged_timestamp(args.last_logged_timestamp)
         , children_owned(false)
         , metadata(args.metadata)
     {}
@@ -145,6 +151,7 @@ class MemcacheTrieNode
         , prefix_len(0)
         , metadata_valid(false)
         , last_updated_timestamp(ts)
+        , last_logged_timestamp(0)
         , children_owned(true)
         , metadata()
     {}
@@ -187,6 +194,13 @@ class MemcacheTrieNode
         } else {
             return TimestampPointerPair(*this);
         }
+    }
+
+    TimestampPointerPair get_previous_ts_ptr() const
+    {
+        trie_assert(!is_evicted(),
+                    "can't get previous ts ptr from something evicted");
+        return TimestampPointerPair(*this, last_logged_timestamp);
     }
 
     template<auto value_merge_fn, typename... value_args>
@@ -255,8 +269,8 @@ class MemcacheTrieNode
             expect, new_ptr, std::memory_order_acq_rel);
     }
 
-    // void invalidate_hash_to_node(const node_t* target, uint32_t
-    // current_timestamp);
+    void invalidate_hash_to_node(const node_t* target,
+                                 uint32_t current_timestamp);
     void invalidate_hash_to_key(const prefix_t& query,
                                 uint32_t current_timestamp);
 
@@ -281,7 +295,7 @@ class MemcacheTrieNode
     value_t* get_value(const prefix_t& query_prefix,
                        DurableInterface auto& storage);
 
-    void log_self_active(DurableInterface auto& interface) const;
+    void log_self_active(DurableInterface auto& interface);
     void log_self_deleted(DurableInterface auto& interface) const;
 
     void log(std::string pref) const
@@ -460,6 +474,30 @@ MCTN_DECL::insert(prefix_t const& new_prefix,
         }
         __builtin_ia32_pause();
     }
+}
+
+MCTN_TEMPLATE
+void
+MCTN_DECL ::invalidate_hash_to_node(const node_t* target,
+                                    uint32_t current_timestamp)
+{
+    invalidate_hash(current_timestamp);
+    if (target == this) {
+        return;
+    }
+
+    auto match_len
+        = get_prefix_match_len(target->get_prefix(), target->get_prefix_len());
+
+    trie_assert(match_len == prefix_len, "invalid invalidate");
+
+    const uint8_t bb = target->get_prefix().get_branch_bits(prefix_len);
+
+    node_t* child = get_child(bb);
+    trie_assert(child != nullptr,
+                "found null child in invalidate_hash_to_node");
+
+    child->invalidate_hash_to_node(target, current_timestamp);
 }
 
 MCTN_TEMPLATE
@@ -735,7 +773,7 @@ MCTN_DECL ::delete_value(const prefix_t& delete_prefix,
         // won't actually remove node from tree, but such nodes will get cleaned
         // up during normalize
         trie_assert(delete_prefix == prefix, "mismatch");
-        auto const& v = std::get<variant_value_t>(body);
+        auto& v = std::get<variant_value_t>(body);
         v.reset();
         return;
     }
@@ -749,6 +787,7 @@ MCTN_DECL ::delete_value(const prefix_t& delete_prefix,
         auto* prev = std::get<variant_children_t>(body)[bb].exchange(
             nullptr, std::memory_order_acq_rel);
         if (prev) {
+            prev->invalidate_hash(ts);
             prev->log_self_deleted(storage);
             gc.free(prev);
         }
@@ -799,7 +838,7 @@ MCTN_DECL::get_value(const prefix_t& query_prefix,
 
 MCTN_TEMPLATE
 void
-MCTN_DECL::log_self_active(DurableInterface auto& interface) const
+MCTN_DECL::log_self_active(DurableInterface auto& interface)
 {
     trie_assert(metadata_valid, "cannot commit self before hash");
     trie_assert(!is_evicted(), "cannot log active something already evicted");
@@ -811,9 +850,13 @@ MCTN_DECL::log_self_active(DurableInterface auto& interface) const
 
         durable_value_t v;
 
-        v.make_value_node(
-            prefix, metadata.hash, *std::get<variant_value_t>(body));
+        v.make_value_node(prefix,
+                          metadata.hash,
+                          get_previous_ts_ptr(),
+                          *std::get<variant_value_t>(body));
         interface.log_durable_value(TimestampPointerPair(*this), v);
+        last_logged_timestamp
+            = last_updated_timestamp.load(std::memory_order_acquire);
         return;
     }
 
@@ -821,6 +864,7 @@ MCTN_DECL::log_self_active(DurableInterface auto& interface) const
 
     m.h = metadata.hash;
     m.key_len_bits = prefix_len.len;
+    m.previous = get_previous_ts_ptr();
     TrieBitVector bv;
     uint8_t sz = 0;
 
@@ -839,6 +883,8 @@ MCTN_DECL::log_self_active(DurableInterface auto& interface) const
     v.make_map_node(prefix, m);
 
     interface.log_durable_value(get_ts_ptr(), v);
+    last_logged_timestamp
+        = last_updated_timestamp.load(std::memory_order_acquire);
 }
 
 MCTN_TEMPLATE
@@ -846,7 +892,7 @@ void
 MCTN_DECL::log_self_deleted(DurableInterface auto& interface) const
 {
     durable_value_t v;
-    v.make_delete_node(prefix, prefix_len);
+    v.make_delete_node(get_previous_ts_ptr());
     interface.log_durable_value(get_ts_ptr(), v);
 }
 
@@ -864,8 +910,8 @@ MCTN_DECL::evict_self() const
                     "cannot evict deleted object");
     }
 
-    return new node_t(
-        ptr_node_args_t{ get_ts_ptr(), prefix, prefix_len, metadata });
+    return new node_t(ptr_node_args_t{
+        get_ts_ptr(), prefix, prefix_len, metadata, last_logged_timestamp });
 }
 
 #undef MCTN_DECL

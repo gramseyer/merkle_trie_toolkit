@@ -5,13 +5,13 @@
 #include "mtt/common/prefix.h"
 #include "mtt/common/types.h"
 
-#include <utils/non_movable.h>
 #include <utils/debug_utils.h>
+#include <utils/non_movable.h>
 
 #include <array>
-#include <cstdint>
 #include <compare>
 #include <cstddef>
+#include <cstdint>
 
 namespace trie {
 
@@ -32,8 +32,7 @@ namespace trie {
  * garbage collection in the db/state pruning, as necessary. This requires
  * adding a node for when something is deleted.
  */
-struct  __attribute__ ((packed))
-TimestampPointerPair
+struct __attribute__((packed)) TimestampPointerPair
 {
     uint32_t timestamp;
     const void* ptr;
@@ -46,27 +45,33 @@ TimestampPointerPair
         , ptr(static_cast<const void*>(&n))
     {}
 
+    template<typename node_t>
+    TimestampPointerPair(node_t const& n, uint32_t ts)
+        : timestamp(ts)
+        , ptr(static_cast<const void*>(&n))
+    {}
+
     TimestampPointerPair()
         : timestamp()
         , ptr(nullptr)
-        {}
+    {}
 
-    std::strong_ordering operator<=>(const TimestampPointerPair&) const = default;
+    std::strong_ordering operator<=>(
+        const TimestampPointerPair&) const = default;
     bool operator==(const TimestampPointerPair&) const = default;
 };
 
-static_assert(offsetof(TimestampPointerPair, timestamp) == 0, "timestamp should come first");
-
+static_assert(offsetof(TimestampPointerPair, timestamp) == 0,
+              "timestamp should come first");
 
 // This is standard-layout, and importantly,
 // we can take a slice of a list and get a valid node.
-struct 
-__attribute__ ((packed))
-DurableMapNode
+struct __attribute__((packed)) DurableMapNode
 {
     Hash h;
     uint16_t key_len_bits;
     uint16_t bv;
+    TimestampPointerPair previous;
     TimestampPointerPair children[16];
 };
 
@@ -82,11 +87,10 @@ struct DurableValueSlice
     uint32_t len;
 };
 
-struct 
-__attribute__ ((packed))
-DurableValueHeader
+struct __attribute__((packed)) DurableValueHeader
 {
     Hash h;
+    TimestampPointerPair previous;
     uint32_t value_len;
 
     DurableValueSlice to_value_slice() const;
@@ -99,11 +103,6 @@ DurableValueHeader::to_value_slice() const
                                   + sizeof(DurableValueHeader),
                               value_len };
 }
-
-struct DurableDeleteNode
-{
-    PrefixLenBits key_len_bits;
-};
 
 template<uint8_t KEY_LEN_BYTES>
 class DurableValue
@@ -143,11 +142,10 @@ class DurableValue
     }
 
   public:
-    void make_delete_node(const TriePrefix auto& key, PrefixLenBits key_len)
+    void make_delete_node(TimestampPointerPair const& previous)
     {
         reset_to_delete_node();
-        add_key(key);
-        append_type(key_len.len);
+        append_type(previous);
     }
 
     /**
@@ -159,15 +157,16 @@ class DurableValue
     {
         reset_to_map_node();
         add_key(key);
-        append_type(map_node, 
-            sizeof(Hash) 
-            + 2 * sizeof(uint16_t) 
-            + utils::detail::BVManipFns<uint16_t>::size(map_node.bv) * sizeof(TimestampPointerPair));
+        append_type(map_node,
+                    offsetof(DurableMapNode, children)
+                        + utils::detail::BVManipFns<uint16_t>::size(map_node.bv)
+                              * sizeof(TimestampPointerPair));
     }
 
     template<typename ValueType>
     void make_value_node(const TriePrefix auto& key,
                          Hash const& h,
+                         TimestampPointerPair const& previous,
                          ValueType const& v)
     {
         reset_to_value_node();
@@ -175,6 +174,7 @@ class DurableValue
         uint32_t value_h_offset = buffer.size();
         constexpr uint32_t value_h_size = sizeof(DurableValueHeader);
         append_type(h);
+        append_type(previous);
         append_type(static_cast<uint32_t>(0));
         v.copy_data(buffer);
         auto* vh = reinterpret_cast<DurableValueHeader*>(buffer.data()

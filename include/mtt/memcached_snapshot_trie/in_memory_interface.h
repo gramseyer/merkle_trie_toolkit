@@ -33,7 +33,8 @@ class InMemoryInterface
     {
         std::lock_guard lock(mtx);
 
-        std::printf("logging key %p %lu value=%s\n", key.ptr, key.timestamp, utils::array_to_str(value.get_buffer()).c_str());
+        // std::printf("logging key %p %lu value=%s\n", key.ptr, key.timestamp,
+        // utils::array_to_str(value.get_buffer()).c_str());
 
         if (values.find(key) != values.end()) {
             throw std::runtime_error("cannot reinsert preexisting key");
@@ -58,8 +59,8 @@ class InMemoryInterface
         return out;
     }
 
-    std::vector<uint8_t> const&
-    get_raw(TimestampPointerPair const& key) const {
+    std::vector<uint8_t> const& get_raw(TimestampPointerPair const& key) const
+    {
         std::lock_guard lock(mtx);
 
         return values.at(key);
