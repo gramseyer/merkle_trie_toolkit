@@ -479,6 +479,10 @@ public:
 		return prefix;
 	}
 
+	constexpr static PrefixLenBits len() {
+		return PrefixLenBits{MAX_LEN_BITS};
+	}
+
 	void clear() {
 		prefix = 0;
 	}

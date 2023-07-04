@@ -6,9 +6,12 @@
 #include "mtt/common/types.h"
 
 #include <utils/non_movable.h>
+#include <utils/debug_utils.h>
 
 #include <array>
 #include <cstdint>
+#include <compare>
+#include <cstddef>
 
 namespace trie {
 
@@ -29,8 +32,8 @@ namespace trie {
  * garbage collection in the db/state pruning, as necessary. This requires
  * adding a node for when something is deleted.
  */
-
-struct TimestampPointerPair
+struct  __attribute__ ((packed))
+TimestampPointerPair
 {
     uint32_t timestamp;
     const void* ptr;
@@ -42,15 +45,28 @@ struct TimestampPointerPair
         : timestamp(n.get_last_modified_ts())
         , ptr(static_cast<const void*>(&n))
     {}
+
+    TimestampPointerPair()
+        : timestamp()
+        , ptr(nullptr)
+        {}
+
+    std::strong_ordering operator<=>(const TimestampPointerPair&) const = default;
+    bool operator==(const TimestampPointerPair&) const = default;
 };
 
+static_assert(offsetof(TimestampPointerPair, timestamp) == 0, "timestamp should come first");
+
+
 // This is standard-layout, and importantly,
-// we can take a slice of a prefix and get a valid commitment.
-struct DurableMapNode
+// we can take a slice of a list and get a valid node.
+struct 
+__attribute__ ((packed))
+DurableMapNode
 {
     Hash h;
-    PrefixLenBits key_len_bits;
-    TrieBitVector bv;
+    uint16_t key_len_bits;
+    uint16_t bv;
     TimestampPointerPair children[16];
 };
 
@@ -66,7 +82,9 @@ struct DurableValueSlice
     uint32_t len;
 };
 
-struct DurableValueHeader
+struct 
+__attribute__ ((packed))
+DurableValueHeader
 {
     Hash h;
     uint32_t value_len;
@@ -111,17 +129,17 @@ class DurableValue
     }
 
     template<TriviallyCopyable T>
-    void append_type(const T& v)
+    void append_type(const T& v, uint32_t sz = sizeof(T))
     {
         const uint8_t* vp = reinterpret_cast<const uint8_t*>(&v);
-        buffer.insert(buffer.end(), vp, vp + sizeof(T));
+        buffer.insert(buffer.end(), vp, vp + std::min<uint32_t>(sz, sizeof(T)));
     }
 
     void add_key(const TriePrefix auto& key)
     {
-        static_assert(key.len() == KEY_LEN_BYTES, "key len mismatch");
+        static_assert(key.size_bytes() == KEY_LEN_BYTES, "key len mismatch");
 
-        key.write_bytes_to(buffer, KEY_LEN_BYTES);
+        key.write_bytes_to(buffer, key.len());
     }
 
   public:
@@ -141,7 +159,10 @@ class DurableValue
     {
         reset_to_map_node();
         add_key(key);
-        append_type(map_node);
+        append_type(map_node, 
+            sizeof(Hash) 
+            + 2 * sizeof(uint16_t) 
+            + utils::detail::BVManipFns<uint16_t>::size(map_node.bv) * sizeof(TimestampPointerPair));
     }
 
     template<typename ValueType>
@@ -149,7 +170,7 @@ class DurableValue
                          Hash const& h,
                          ValueType const& v)
     {
-        reset_to_map_node();
+        reset_to_value_node();
         add_key(key);
         uint32_t value_h_offset = buffer.size();
         constexpr uint32_t value_h_size = sizeof(DurableValueHeader);

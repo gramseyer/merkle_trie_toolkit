@@ -5,6 +5,8 @@
 #include <map>
 #include <mutex>
 
+#include <utils/debug_utils.h>
+
 namespace trie {
 
 /**
@@ -17,7 +19,7 @@ namespace trie {
 template<uint8_t _KEY_LEN_BYTES>
 class InMemoryInterface
 {
-    std::mutex mtx;
+    mutable std::mutex mtx;
 
     std::map<TimestampPointerPair, std::vector<uint8_t>> values;
 
@@ -30,6 +32,8 @@ class InMemoryInterface
                            DurableValue<KEY_LEN_BYTES> const& value)
     {
         std::lock_guard lock(mtx);
+
+        std::printf("logging key %p %lu value=%s\n", key.ptr, key.timestamp, utils::array_to_str(value.get_buffer()).c_str());
 
         if (values.find(key) != values.end()) {
             throw std::runtime_error("cannot reinsert preexisting key");
@@ -52,6 +56,13 @@ class InMemoryInterface
         out.get_backing_data() = it->second;
 
         return out;
+    }
+
+    std::vector<uint8_t> const&
+    get_raw(TimestampPointerPair const& key) const {
+        std::lock_guard lock(mtx);
+
+        return values.at(key);
     }
 };
 

@@ -180,7 +180,7 @@ class MemcacheTrieNode
         return std::holds_alternative<variant_storage_ptr_t>(body);
     }
 
-    TimestampPointerPair const& get_ts_ptr() const
+    TimestampPointerPair get_ts_ptr() const
     {
         if (is_evicted()) {
             return std::get<variant_storage_ptr_t>(body);
@@ -206,8 +206,7 @@ class MemcacheTrieNode
 
     node_t* extract_singlechild();
 
-    node_t* evict_self(DurableInterface auto& interface,
-                       bool produce_placeholder_node) const;
+    node_t* evict_self() const;
 
     void invalidate_hash(uint32_t current_timestamp)
     {
@@ -336,6 +335,8 @@ class MemcacheTrie
 
     gc_t& get_gc() { return gc; }
 
+    storage_t& get_storage() { return storage; }
+
     MemcacheTrie(uint32_t current_ts)
         : root(new node_t(current_ts))
         , gc()
@@ -355,7 +356,7 @@ class MemcacheTrie
         std::vector<uint8_t> digest_bytes;
         root->compute_hash_and_normalize(
             gc, eviction_threshold, digest_bytes, storage);
-        return root->get_hash();
+        return root->get_metadata().hash;
     }
 
     value_t* get_value(prefix_t const& query)
@@ -404,7 +405,8 @@ MCTN_DECL::insert(prefix_t const& new_prefix,
 
         if (child == nullptr) {
             // insert new node
-            node_t* new_node = new node_t(new_prefix, args...);
+            node_t* new_node
+                = new node_t(new_prefix, current_timestamp, args...);
 
             if (try_add_child(bb, child, new_node)) {
                 // inserted new child
@@ -459,31 +461,6 @@ MCTN_DECL::insert(prefix_t const& new_prefix,
         __builtin_ia32_pause();
     }
 }
-
-/*
-MCTN_TEMPLATE
-void
-MCTN_DECL ::invalidate_hash_to_node(const node_t* target, uint32_t
-current_timestamp)
-{
-    invalidate_hash(current_timestamp);
-    if (target == this) {
-        return;
-    }
-
-    auto match_len
-        = get_prefix_match_len(target->get_prefix(), target->get_prefix_len());
-
-    trie_assert(match_len == prefix_len, "invalid invalidate");
-
-    const uint8_t bb = target->get_prefix().get_branch_bits(prefix_len);
-
-    node_t* child = get_child(bb);
-    trie_assert(child != nullptr,
-                "found null child in invalidate_hash_to_node");
-
-    child->invalidate_hash_to_node(target, current_timestamp);
-} */
 
 MCTN_TEMPLATE
 void
@@ -584,7 +561,6 @@ MCTN_DECL ::get_or_make_subnode_ref(const prefix_t& query_prefix,
             }
             // only reference to new_child is local
             delete new_child;
-            // gc.free(new_child);
         } else {
             auto child_match_len
                 = ptr->get_prefix_match_len(query_prefix, query_len);
@@ -608,7 +584,6 @@ MCTN_DECL ::get_or_make_subnode_ref(const prefix_t& query_prefix,
             }
             // only reference to intermediate is local
             delete intermediate;
-            // gc.free(intermediate);
         }
         __builtin_ia32_pause();
     }
@@ -621,7 +596,6 @@ MCTN_DECL ::compute_hash_and_normalize(deferred_gc_t auto& gc,
                                        std::vector<uint8_t>& digest_bytes,
                                        DurableInterface auto& storage)
 {
-
     if (metadata_valid) {
         return metadata;
     }
@@ -654,6 +628,8 @@ MCTN_DECL ::compute_hash_and_normalize(deferred_gc_t auto& gc,
             throw std::runtime_error("error from crypto_generichash");
         }
         metadata_valid = true;
+
+        log_self_active(storage);
         return metadata;
     }
 
@@ -672,7 +648,7 @@ MCTN_DECL ::compute_hash_and_normalize(deferred_gc_t auto& gc,
 
         uint8_t child_count = child->get_num_children();
         if (child_count == 0) {
-            child->log_self_deleted(child);
+            child->log_self_deleted(storage);
             erase_child(bb, gc);
         } else if (child_count == 1) {
 
@@ -693,7 +669,7 @@ MCTN_DECL ::compute_hash_and_normalize(deferred_gc_t auto& gc,
         }
 
         if (child->get_last_modified_ts() <= timestamp_evict_threshold) {
-            node_t* new_child = child->evict_self(storage, true);
+            node_t* new_child = child->evict_self();
             trie_assert(new_child != nullptr, "invalid eviction");
             gc.free(child);
             bool res = try_add_child(bb, child, new_child);
@@ -704,6 +680,7 @@ MCTN_DECL ::compute_hash_and_normalize(deferred_gc_t auto& gc,
 
     if (num_children <= 1 && prefix_len.len != 0) {
         // don't bother hashing, except special casing the root node
+        // parent node will manage deletion, if necessary
         return metadata;
     }
 
@@ -732,7 +709,7 @@ MCTN_DECL ::compute_hash_and_normalize(deferred_gc_t auto& gc,
     }
 
     metadata_valid = true;
-
+    log_self_active(storage);
     return metadata;
 }
 
@@ -843,7 +820,8 @@ MCTN_DECL::log_self_active(DurableInterface auto& interface) const
     DurableMapNode m;
 
     m.h = metadata.hash;
-    m.key_len_bits = prefix_len;
+    m.key_len_bits = prefix_len.len;
+    TrieBitVector bv;
     uint8_t sz = 0;
 
     for (uint8_t bb = 0; bb < 16; bb++) {
@@ -851,14 +829,16 @@ MCTN_DECL::log_self_active(DurableInterface auto& interface) const
         if (child == nullptr)
             continue;
 
-        trie_assert(child->is_evicted(), "children must be evicted");
-
-        m.bv.add(bb);
+        bv.add(bb);
         m.children[sz] = child->get_ts_ptr();
         sz++;
     }
+    m.bv = bv.get();
 
-    interface.log_durable_value(prefix, m);
+    durable_value_t v;
+    v.make_map_node(prefix, m);
+
+    interface.log_durable_value(get_ts_ptr(), v);
 }
 
 MCTN_TEMPLATE
@@ -872,34 +852,20 @@ MCTN_DECL::log_self_deleted(DurableInterface auto& interface) const
 
 MCTN_TEMPLATE
 MCTN_DECL*
-MCTN_DECL::evict_self(DurableInterface auto& interface,
-                      bool produce_placeholder_node) const
+MCTN_DECL::evict_self() const
 {
+    // care must be taken to ensure that data is logged
+    // at time of eviction (mainly, during hash and normalize,
+    // compute hash and log data before evicting).
     trie_assert(!is_evicted(), "double eviction");
 
     if (is_leaf()) {
         trie_assert(std::get<variant_value_t>(body).has_value(),
                     "cannot evict deleted object");
-    } else {
-        for (uint8_t bb = 0; bb < 16; bb++) {
-            const node_t* child = get_child(bb);
-            if (child == nullptr)
-                continue;
-
-            if (!child->is_evicted()) {
-                auto* res = child->evict_self(interface, false);
-                trie_assert(res == nullptr, "memory leak otherwise");
-            }
-        }
     }
-    log_self_active(interface);
 
-    if (produce_placeholder_node) {
-        return new node_t(
-            ptr_node_args_t{ get_ts_ptr(), prefix, prefix_len, metadata });
-    } else {
-        return nullptr;
-    }
+    return new node_t(
+        ptr_node_args_t{ get_ts_ptr(), prefix, prefix_len, metadata });
 }
 
 #undef MCTN_DECL
