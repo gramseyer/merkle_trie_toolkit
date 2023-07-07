@@ -320,7 +320,7 @@ TEST_CASE("memcache reload", "[memcache]")
 
     SECTION("everything evicted")
     {
-        m.hash_and_normalize(2);
+        auto h0 = m.hash_and_normalize(2);
 
         REQUIRE(m.get_storage().get_store_count() == 6);
 
@@ -348,6 +348,10 @@ TEST_CASE("memcache reload", "[memcache]")
 
         check_exist(1, 0xAAAA'BBBB'CCCC'0000);
         REQUIRE(m.get_storage().get_load_count() == 9);
+
+        auto h1 = m.hash_and_normalize(2);
+
+        REQUIRE(h1 == h0);
     }
 }
 
