@@ -4,7 +4,8 @@
 
 namespace trie {
 
-struct SnapshotTrieMetadataBase
+struct __attribute__((packed))
+SnapshotTrieMetadataBase
 {
     Hash hash;
     int32_t size = 0;

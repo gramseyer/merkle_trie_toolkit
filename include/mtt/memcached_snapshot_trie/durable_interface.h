@@ -5,6 +5,7 @@
 #include "mtt/common/prefix.h"
 #include "mtt/common/types.h"
 
+#include <utils/assert.h>
 #include <utils/debug_utils.h>
 #include <utils/non_movable.h>
 
@@ -46,12 +47,12 @@ struct __attribute__((packed)) TimestampPointerPair
     {}
 
     template<typename node_t>
-    TimestampPointerPair(node_t const& n, uint32_t ts)
+    TimestampPointerPair(const node_t* n, uint32_t ts)
         : timestamp(ts)
-        , ptr(static_cast<const void*>(&n))
+        , ptr(static_cast<const void*>(n))
     {}
 
-    TimestampPointerPair()
+    constexpr TimestampPointerPair()
         : timestamp()
         , ptr(nullptr)
     {}
@@ -66,13 +67,17 @@ static_assert(offsetof(TimestampPointerPair, timestamp) == 0,
 
 // This is standard-layout, and importantly,
 // we can take a slice of a list and get a valid node.
+template<typename metadata_t>
 struct __attribute__((packed)) DurableMapNode
 {
-    Hash h;
+    metadata_t metadata;
     uint16_t key_len_bits;
     uint16_t bv;
     TimestampPointerPair previous;
     TimestampPointerPair children[16];
+
+    static_assert(TriviallyCopyable<metadata_t>,
+                  "metadata must be trivially copyable");
 };
 
 /**
@@ -87,20 +92,25 @@ struct DurableValueSlice
     uint32_t len;
 };
 
+template<typename metadata_t>
 struct __attribute__((packed)) DurableValueHeader
 {
-    Hash h;
+    metadata_t metadata;
     TimestampPointerPair previous;
     uint32_t value_len;
+
+    static_assert(TriviallyCopyable<metadata_t>,
+                  "metadata must be trivially copyable");
 
     DurableValueSlice to_value_slice() const;
 };
 
+template<typename metadata_t>
 DurableValueSlice
-DurableValueHeader::to_value_slice() const
+DurableValueHeader<metadata_t>::to_value_slice() const
 {
     return DurableValueSlice{ reinterpret_cast<const uint8_t*>(this)
-                                  + sizeof(DurableValueHeader),
+                                  + sizeof(DurableValueHeader<metadata_t>),
                               value_len };
 }
 
@@ -137,6 +147,7 @@ class DurableValue
     void add_key(const TriePrefix auto& key)
     {
         static_assert(key.size_bytes() == KEY_LEN_BYTES, "key len mismatch");
+        utils::print_assert(buffer.size() == 1, "key should be first addition");
 
         key.write_bytes_to(buffer, key.len());
     }
@@ -152,33 +163,35 @@ class DurableValue
      * TODO: There's a way to rework this API that avoids a memcpy
      * TODO: Truncate map_node to only include active children
      */
+    template<typename metadata_t>
     void make_map_node(const TriePrefix auto& key,
-                       DurableMapNode const& map_node)
+                       DurableMapNode<metadata_t> const& map_node)
     {
         reset_to_map_node();
         add_key(key);
         append_type(map_node,
-                    offsetof(DurableMapNode, children)
+                    offsetof(DurableMapNode<metadata_t>, children)
                         + utils::detail::BVManipFns<uint16_t>::size(map_node.bv)
                               * sizeof(TimestampPointerPair));
     }
 
-    template<typename ValueType>
+    template<typename ValueType, typename metadata_t>
     void make_value_node(const TriePrefix auto& key,
-                         Hash const& h,
+                         metadata_t const& h,
                          TimestampPointerPair const& previous,
                          ValueType const& v)
     {
         reset_to_value_node();
         add_key(key);
         uint32_t value_h_offset = buffer.size();
-        constexpr uint32_t value_h_size = sizeof(DurableValueHeader);
+        constexpr uint32_t value_h_size
+            = sizeof(DurableValueHeader<metadata_t>);
         append_type(h);
         append_type(previous);
         append_type(static_cast<uint32_t>(0));
         v.copy_data(buffer);
-        auto* vh = reinterpret_cast<DurableValueHeader*>(buffer.data()
-                                                         + value_h_offset);
+        auto* vh = reinterpret_cast<DurableValueHeader<metadata_t>*>(
+            buffer.data() + value_h_offset);
         vh->value_len = buffer.size() - (value_h_offset + value_h_size);
     }
 
@@ -220,19 +233,20 @@ class DurableResult
 
     bool is_delete() const { return backing[0] == 2; }
 
-    const DurableValueHeader& get_value() const
+    template<typename metadata_t>
+    const DurableValueHeader<metadata_t>& get_value() const
     {
         if (!is_value()) {
             throw std::runtime_error("get_value() on non value result");
         }
 
-        return *reinterpret_cast<const DurableValueHeader*>(backing.data() + 1
-                                                            + KEY_LEN_BYTES);
+        return *reinterpret_cast<const DurableValueHeader<metadata_t>*>(
+            backing.data() + 1 + KEY_LEN_BYTES);
     }
 
     DurableKeySlice<KEY_LEN_BYTES> get_key() const
     {
-        return DurableKeySlice{ backing.data() + 1 };
+        return DurableKeySlice<KEY_LEN_BYTES>{ backing.data() + 1 };
     }
 
     PrefixLenBits get_delete() const
@@ -245,13 +259,14 @@ class DurableResult
                                                        + KEY_LEN_BYTES);
     }
 
-    const DurableMapNode& get_map() const
+    template<typename metadata_t>
+    const DurableMapNode<metadata_t>& get_map() const
     {
         if (!is_map()) {
             throw std::runtime_error("get_map() on non map result");
         }
-        return *reinterpret_cast<const DurableMapNode*>(backing.data() + 1
-                                                        + KEY_LEN_BYTES);
+        return *reinterpret_cast<const DurableMapNode<metadata_t>*>(
+            backing.data() + 1 + KEY_LEN_BYTES);
     }
 };
 

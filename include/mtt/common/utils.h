@@ -17,6 +17,9 @@ struct EmptyValue {
 
 	// used when hashing tries
 	constexpr static void copy_data(std::vector<uint8_t>& buf) {}
+
+	template<typename... Args>
+	EmptyValue(Args...) {}
 };
 
 template<typename V, auto serialize_fn>

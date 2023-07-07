@@ -17,8 +17,18 @@ void
 test_log_committed_value(std::vector<uint8_t> const& raw,
                          std::vector<uint8_t> const& committed_value)
 {
-    REQUIRE(raw.size() == 1 + committed_value.size());
-    auto res = memcmp(
+    uint8_t res = (raw.size() != 1 + committed_value.size());
+    if (res != 0) {
+        std::printf(
+            "raw %s\nexp %s\n",
+            utils::array_to_str(raw.data() + 1, raw.size() - 1).c_str(),
+            utils::array_to_str(committed_value.data(), committed_value.size())
+                .c_str());
+    }
+
+    REQUIRE(res == 0);
+
+    res = memcmp(
         raw.data() + 1, committed_value.data(), committed_value.size());
 
     if (res != 0) {
@@ -123,8 +133,6 @@ TEST_CASE("basic memcache check log insert", "[memcache]")
 
     std::vector<uint8_t> expect
         = { 0xAA, 0xAA, 0xBB, 0xBB, 0xCC, 0xCC, 0xDD, 0xDD };
-    auto h = obj_ptr->get_metadata().hash;
-    expect.insert(expect.end(), h.begin(), h.end());
 
     auto add_expect = [&expect]<typename T>(T const& t) {
         expect.insert(expect.end(),
@@ -132,15 +140,15 @@ TEST_CASE("basic memcache check log insert", "[memcache]")
                       reinterpret_cast<const uint8_t*>(&t) + sizeof(T));
     };
 
+    add_expect(obj_ptr->get_metadata());
+
     add_expect(obj_tsp);
     // value len is 32
     add_expect(static_cast<uint32_t>(0));
     test_log_value(m.get_storage().get_raw(obj_ptr->get_ts_ptr()), expect);
 
     expect = { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
-    h = root_ptr->get_metadata().hash;
-    expect.insert(expect.end(), h.begin(), h.end());
-
+    add_expect(root_ptr->get_metadata());
     add_expect(static_cast<uint16_t>(0));
     add_expect(static_cast<uint16_t>(1 << 10)); // A
     add_expect(root_tsp);

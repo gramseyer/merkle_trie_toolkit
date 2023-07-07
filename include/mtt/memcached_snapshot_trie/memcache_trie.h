@@ -23,19 +23,27 @@
 
 #include <sodium.h>
 
+#include <utils/assert.h>
+
 namespace trie {
 
-template<typename prefix_t, typename value_t, SnapshotTrieMetadata metadata_t>
+template<typename _prefix_t, typename value_t, SnapshotTrieMetadata _metadata_t>
 class MemcacheTrieNode
 {
+  public:
+    using prefix_t = _prefix_t;
+    using metadata_t = _metadata_t;
     using node_t = MemcacheTrieNode<prefix_t, value_t, metadata_t>;
 
+  private:
     static_assert(std::atomic<node_t*>::is_always_lock_free,
                   "ptr should be lockfree");
 
     using variant_value_t = std::optional<value_t>;
     using variant_children_t = std::array<std::atomic<node_t*>, 16>;
     using variant_storage_ptr_t = TimestampPointerPair;
+
+    constexpr static TimestampPointerPair null_ts_ptr = TimestampPointerPair();
 
     std::variant<variant_value_t, variant_children_t, variant_storage_ptr_t>
         body;
@@ -46,7 +54,7 @@ class MemcacheTrieNode
     std::atomic<bool> metadata_valid;
     std::atomic<uint32_t> last_updated_timestamp;
 
-    uint32_t last_logged_timestamp;
+    std::optional<TimestampPointerPair> previous_logged_ts;
 
     bool children_owned = false;
     metadata_t metadata;
@@ -72,22 +80,24 @@ class MemcacheTrieNode
         , prefix_len(MAX_KEY_LEN_BITS)
         , metadata_valid(false)
         , last_updated_timestamp(ts)
-        , last_logged_timestamp(0)
+        , previous_logged_ts(std::nullopt)
         , children_owned(false)
         , metadata()
     {}
 
     template<typename... value_args>
     // value node
-    MemcacheTrieNode(prefix_t const& prefix,
-                     uint32_t ts,
-                     value_args const&... args)
+    MemcacheTrieNode(
+        prefix_t const& prefix,
+        uint32_t ts,
+        std::optional<TimestampPointerPair> const& previous_logged_ts,
+        value_args const&... args)
         : body(std::in_place_type<variant_value_t>, std::in_place_t{}, args...)
         , prefix(prefix)
         , prefix_len(MAX_KEY_LEN_BITS)
         , metadata_valid(false)
         , last_updated_timestamp(ts)
-        , last_logged_timestamp(0)
+        , previous_logged_ts(previous_logged_ts)
         , children_owned(false)
         , metadata()
     {}
@@ -99,7 +109,11 @@ class MemcacheTrieNode
     };
 
     // map node
-    MemcacheTrieNode(map_node_args_t const& args, uint32_t ts)
+    MemcacheTrieNode(
+        map_node_args_t const& args,
+        uint32_t ts,
+        std::optional<TimestampPointerPair> const& previous_logged_ts
+        = std::nullopt)
         : body(std::in_place_type<variant_children_t>)
         , prefix([args](const prefix_t& p) -> prefix_t {
             prefix_t out = p;
@@ -109,6 +123,7 @@ class MemcacheTrieNode
         , prefix_len(args.len)
         , metadata_valid(false)
         , last_updated_timestamp(ts)
+        , previous_logged_ts(previous_logged_ts)
         , children_owned(false)
         , metadata()
     {
@@ -121,17 +136,18 @@ class MemcacheTrieNode
         prefix_t const& prefix;
         PrefixLenBits prefix_len;
         metadata_t const& metadata;
-        uint32_t last_logged_timestamp;
     };
 
     // ptr node
+    // note that pointer node must have been logged
+    // at time args.tsp.timestamp
     MemcacheTrieNode(ptr_node_args_t args)
         : body(args.tsp)
         , prefix(args.prefix)
         , prefix_len(args.prefix_len)
         , metadata_valid(true)
         , last_updated_timestamp(args.tsp.timestamp)
-        , last_logged_timestamp(args.last_logged_timestamp)
+        , previous_logged_ts(std::nullopt)
         , children_owned(false)
         , metadata(args.metadata)
     {}
@@ -145,18 +161,27 @@ class MemcacheTrieNode
     }
 
     // root node
-    MemcacheTrieNode(uint32_t ts)
+    MemcacheTrieNode(
+        uint32_t ts,
+        std::optional<TimestampPointerPair> const& previous_logged_ts
+        = std::nullopt)
         : body(std::in_place_type<variant_children_t>)
         , prefix()
         , prefix_len(0)
         , metadata_valid(false)
         , last_updated_timestamp(ts)
-        , last_logged_timestamp(0)
+        , previous_logged_ts(previous_logged_ts)
         , children_owned(true)
         , metadata()
     {}
 
     void commit_ownership() { children_owned = true; }
+
+    void set_metadata(const metadata_t& m)
+    {
+        metadata = m;
+        metadata_valid.store(true, std::memory_order_release);
+    }
 
     static void trie_assert(bool expr, const char* msg)
     {
@@ -187,6 +212,11 @@ class MemcacheTrieNode
         return std::holds_alternative<variant_storage_ptr_t>(body);
     }
 
+    TimestampPointerPair const& get_ptr_to_evicted_data() const
+    {
+        return std::get<variant_storage_ptr_t>(body);
+    }
+
     TimestampPointerPair get_ts_ptr() const
     {
         if (is_evicted()) {
@@ -196,11 +226,20 @@ class MemcacheTrieNode
         }
     }
 
-    TimestampPointerPair get_previous_ts_ptr() const
+    TimestampPointerPair const& get_previous_ts_ptr() const
     {
         trie_assert(!is_evicted(),
                     "can't get previous ts ptr from something evicted");
-        return TimestampPointerPair(*this, last_logged_timestamp);
+        if (previous_logged_ts.has_value()) {
+            return *previous_logged_ts;
+        }
+        return null_ts_ptr;
+    }
+
+    void update_previous_ts_ptr()
+    {
+        trie_assert(!is_evicted(), "can't update ts ptr in evicted node");
+        previous_logged_ts = TimestampPointerPair(*this);
     }
 
     template<auto value_merge_fn, typename... value_args>
@@ -263,7 +302,8 @@ class MemcacheTrieNode
             nullptr, std::memory_order_acq_rel));
     }
 
-    bool try_add_child(uint8_t bb, node_t*& expect, node_t* new_ptr)
+    bool __attribute__((warn_unused_result))
+    try_add_child(uint8_t bb, node_t*& expect, node_t* new_ptr)
     {
         return std::get<variant_children_t>(body)[bb].compare_exchange_strong(
             expect, new_ptr, std::memory_order_acq_rel);
@@ -296,7 +336,7 @@ class MemcacheTrieNode
                        DurableInterface auto& storage);
 
     void log_self_active(DurableInterface auto& interface);
-    void log_self_deleted(DurableInterface auto& interface) const;
+    void log_self_deleted(DurableInterface auto& interface);
 
     void log(std::string pref) const
     {
@@ -380,10 +420,89 @@ class MemcacheTrie
 };
 
 #define MCTN_TEMPLATE                                                          \
-    template<typename prefix_t,                                                \
+    template<typename _prefix_t,                                               \
              typename value_t,                                                 \
-             SnapshotTrieMetadata metadata_t>
-#define MCTN_DECL MemcacheTrieNode<prefix_t, value_t, metadata_t>
+             SnapshotTrieMetadata _metadata_t>
+#define MCTN_DECL MemcacheTrieNode<_prefix_t, value_t, _metadata_t>
+
+template<typename node_t>
+static node_t*
+load_evicted_ptr(TimestampPointerPair const& storage_ptr,
+                 DurableInterface auto& storage)
+{
+    auto result = storage.restore_durable_value(storage_ptr);
+
+    using prefix_t = typename node_t::prefix_t;
+    using metadata_t = typename node_t::metadata_t;
+
+    utils::print_assert(!result.is_delete(),
+                        "should not be reloaded a deletion marker");
+
+    if (result.is_value()) {
+        auto const& value_header = result.template get_value<metadata_t>();
+
+        auto value_slice = value_header.to_value_slice();
+
+        node_t* out = new node_t(prefix_t(result.get_key().ptr, slice_ctor_t{}),
+                                 storage_ptr.timestamp,
+                                 value_header.previous,
+                                 value_slice);
+
+        out->set_metadata(value_header.metadata);
+        return out;
+    }
+
+    utils::print_assert(result.is_map(), "no other types");
+
+    auto const& map_node = result.template get_map<metadata_t>();
+
+    typename node_t::map_node_args_t args{
+        .prefix = prefix_t(result.get_key().ptr, slice_ctor_t{}),
+        .len = PrefixLenBits{ map_node.key_len_bits }
+    };
+
+    // map node
+    auto* out
+        = new node_t(args, map_node.previous.timestamp, map_node.previous);
+
+    TrieBitVector bv(map_node.bv);
+
+    uint8_t counter = 0;
+
+    while (!bv.empty()) {
+        uint8_t bb = bv.pop();
+
+        auto res_child
+            = storage.restore_durable_value(map_node.children[counter]);
+
+        auto get_meta = [&res_child]() -> const metadata_t& {
+            if (res_child.is_value()) {
+                return res_child.template get_value<metadata_t>().metadata;
+            }
+            utils::print_assert(!res_child.is_delete(), "invalid load");
+            return res_child.template get_map<metadata_t>().metadata;
+        };
+
+        typename node_t::ptr_node_args_t ptr_args{
+            .tsp = map_node.children[counter],
+            .prefix = prefix_t(result.get_key().ptr, slice_ctor_t{}),
+            .prefix_len
+            = result.is_value()
+                  ? prefix_t::len()
+                  : result.template get_map<metadata_t>().key_len_bits,
+            .metadata = get_meta()
+        };
+
+        node_t* ptr_child = new node_t(ptr_args);
+        node_t* expect = nullptr;
+
+        auto res = out->try_add_child(bb, expect, ptr_child);
+        utils::print_assert(res, "concurrency fail");
+
+        counter++;
+    }
+    return out;
+}
 
 MCTN_TEMPLATE
 template<auto value_merge_fn, typename... value_args>
@@ -419,8 +538,8 @@ MCTN_DECL::insert(prefix_t const& new_prefix,
 
         if (child == nullptr) {
             // insert new node
-            node_t* new_node
-                = new node_t(new_prefix, current_timestamp, args...);
+            node_t* new_node = new node_t(
+                new_prefix, current_timestamp, std::nullopt, args...);
 
             if (try_add_child(bb, child, new_node)) {
                 // inserted new child
@@ -435,9 +554,8 @@ MCTN_DECL::insert(prefix_t const& new_prefix,
             if (join_len >= child->get_prefix_len()) {
 
                 if (child->is_evicted()) {
-                    node_t* reloaded = nullptr;
-                    throw std::runtime_error("unimplemented");
-
+                    node_t* reloaded = load_evicted_ptr<node_t>(
+                        child->get_ptr_to_evicted_data(), storage);
                     if (try_add_child(bb, child, reloaded)) {
                         reloaded
                             ->template insert<value_merge_fn, value_args...>(
@@ -628,7 +746,7 @@ MCTN_DECL ::get_or_make_subnode_ref(const prefix_t& query_prefix,
 }
 
 MCTN_TEMPLATE
-const metadata_t&
+const _metadata_t&
 MCTN_DECL ::compute_hash_and_normalize(deferred_gc_t auto& gc,
                                        const uint32_t timestamp_evict_threshold,
                                        std::vector<uint8_t>& digest_bytes,
@@ -714,6 +832,7 @@ MCTN_DECL ::compute_hash_and_normalize(deferred_gc_t auto& gc,
             trie_assert(res, "concurrency fail");
         }
     }
+
     metadata = new_metadata;
 
     if (num_children <= 1 && prefix_len.len != 0) {
@@ -827,7 +946,15 @@ MCTN_DECL::get_value(const prefix_t& query_prefix,
         }
 
         if (ptr->is_evicted()) {
-            throw std::runtime_error("unimplemented");
+
+            node_t* reloaded = load_evicted_ptr<node_t>(
+                ptr->get_ptr_to_evicted_data(), storage);
+
+            if (try_add_child(bb, ptr, reloaded)) {
+                return reloaded->get_value(query_prefix, storage);
+            } else {
+                delete reloaded;
+            }
         } else {
             return ptr->get_value(query_prefix, storage);
         }
@@ -851,18 +978,17 @@ MCTN_DECL::log_self_active(DurableInterface auto& interface)
         durable_value_t v;
 
         v.make_value_node(prefix,
-                          metadata.hash,
+                          metadata,
                           get_previous_ts_ptr(),
                           *std::get<variant_value_t>(body));
-        interface.log_durable_value(TimestampPointerPair(*this), v);
-        last_logged_timestamp
-            = last_updated_timestamp.load(std::memory_order_acquire);
+        interface.log_durable_value(get_ts_ptr(), v);
+        update_previous_ts_ptr();
         return;
     }
 
-    DurableMapNode m;
+    DurableMapNode<metadata_t> m;
 
-    m.h = metadata.hash;
+    m.metadata = metadata;
     m.key_len_bits = prefix_len.len;
     m.previous = get_previous_ts_ptr();
     TrieBitVector bv;
@@ -883,17 +1009,20 @@ MCTN_DECL::log_self_active(DurableInterface auto& interface)
     v.make_map_node(prefix, m);
 
     interface.log_durable_value(get_ts_ptr(), v);
-    last_logged_timestamp
-        = last_updated_timestamp.load(std::memory_order_acquire);
+    update_previous_ts_ptr();
 }
 
 MCTN_TEMPLATE
 void
-MCTN_DECL::log_self_deleted(DurableInterface auto& interface) const
+MCTN_DECL::log_self_deleted(DurableInterface auto& interface)
 {
     durable_value_t v;
     v.make_delete_node(get_previous_ts_ptr());
     interface.log_durable_value(get_ts_ptr(), v);
+    // not strictly necessary,
+    // but acts as a guard against future errors if this deleted node
+    // is somehow still referenced
+    update_previous_ts_ptr();
 }
 
 MCTN_TEMPLATE
@@ -910,8 +1039,8 @@ MCTN_DECL::evict_self() const
                     "cannot evict deleted object");
     }
 
-    return new node_t(ptr_node_args_t{
-        get_ts_ptr(), prefix, prefix_len, metadata, last_logged_timestamp });
+    return new node_t(
+        ptr_node_args_t{ get_ts_ptr(), prefix, prefix_len, metadata });
 }
 
 #undef MCTN_DECL

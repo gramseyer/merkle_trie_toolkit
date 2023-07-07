@@ -116,6 +116,8 @@ concept TriePrefix = detail::TriePrefix_get_prefix_match_len<T>
 	requires std::same_as<size_t, decltype(T::size_bytes())>;
 };
 
+struct slice_ctor_t {};
+
 /*! Generic prefix of arbitrary length.
 Prefix is broken into pieces of width BRANCH_BITS, although
 in practice we always use BRANCH_BITS=4.
@@ -148,10 +150,19 @@ public:
 	ByteArrayPrefix(const ArrayLike& input)
 		: data() {
 			
-			static_assert(sizeof(ArrayLike) == MAX_LEN_BYTES);
+			static_assert(sizeof(ArrayLike) == MAX_LEN_BYTES, "size mismatch");
 
 			auto* ptr = reinterpret_cast<unsigned char*>(data.data());
 			std::memcpy(ptr, input.data(), MAX_LEN_BYTES);
+	}
+
+	ByteArrayPrefix(const uint8_t* ptr, slice_ctor_t)
+		: data()
+	{
+		std::memcpy(
+			reinterpret_cast<uint8_t*>(data.data()),
+			ptr, 
+			MAX_LEN_BYTES);
 	}
 
 	//! Returns the number of bits that match between this and \a other,
@@ -275,7 +286,7 @@ public:
 	}
 
 	//! Return an array of bytes representing the prefix's contents.
-	template<typename array_t>
+	template<typename array_t = std::array<uint8_t, MAX_LEN_BYTES>>
 	array_t get_bytes_array() const {
 		array_t out;
 
@@ -381,6 +392,11 @@ public:
 
 	UInt64Prefix(uint64_t id = 0) : prefix(id) {}
 
+	UInt64Prefix(const uint8_t* ptr, slice_ctor_t) : prefix(0)
+	{
+		utils::read_unsigned_big_endian(ptr, prefix);
+	}
+
 	std::strong_ordering 
 	operator<=>(const UInt64Prefix& other) const = default;
 
@@ -426,7 +442,7 @@ public:
 	}
 
 	//! Convert prefix to an array of bytes.
-	template<typename array_t>
+	template<typename array_t = std::array<uint8_t, MAX_LEN_BYTES>>
 	array_t get_bytes_array() const {
 		array_t out;
 
