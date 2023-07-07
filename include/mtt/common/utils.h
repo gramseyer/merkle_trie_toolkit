@@ -28,18 +28,6 @@ struct SerializeWrapper : public V
 	template<typename... args>
 	SerializeWrapper(args... a) : V(a...) {}
 
-	/*SerializeWrapper(const V& v)
-		: V(v)
-		{}
-
-	SerializeWrapper(V&& v)
-		: V(std::move(v))
-		{}
-
-	SerializeWrapper()
-		: V()
-		{} */
-
 	void copy_data(std::vector<uint8_t>& buf) const
 	{
 		auto serialization = serialize_fn(*this);

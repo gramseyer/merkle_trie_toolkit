@@ -229,4 +229,126 @@ TEST_CASE("basic memcache check deletions", "[memcache]")
     test_log_delete(m.get_storage().get_raw(tsint1), tsint);
 }
 
+struct TestSerializeUInt64 {
+
+    uint64_t value;
+
+    void copy_data(std::vector<uint8_t>& buf) const {
+        utils::append_unsigned_little_endian(buf, value);
+    }
+
+    TestSerializeUInt64(uint64_t value) : value(value) {}
+
+    TestSerializeUInt64(DurableValueSlice const& slice) : value(0)
+    {
+        value = *reinterpret_cast<const uint64_t*>(slice.ptr);
+    }
+};
+
+void
+overwrite_merge_fn_memcache_uint64(TestSerializeUInt64& a, const TestSerializeUInt64& b)
+{
+    a = b;
+}
+
+TEST_CASE("memcache reload", "[memcache]")
+{
+    {
+        // test obj check
+        TestSerializeUInt64 v(1234);
+        std::vector<uint8_t> bytes;
+        v.copy_data(bytes);
+
+        DurableValueSlice slice(bytes.data(), bytes.size());
+
+        REQUIRE(slice.len == 8);
+
+        TestSerializeUInt64 v2 (slice);
+
+        REQUIRE(v.value == v2.value);
+    }
+
+    using mt
+        = MemcacheTrie<UInt64Prefix, TestSerializeUInt64, 256, InMemoryInterface<8>>;
+
+    mt m(0);
+
+    auto* root = m.get_subnode_ref_and_invalidate_hash(
+        UInt64Prefix(0), PrefixLenBits(0), 1);
+
+    root->template insert<&overwrite_merge_fn_memcache_uint64>(
+        UInt64Prefix(0xAAAA'BBBB'CCCC'0000),
+        m.get_gc(),
+        1,
+        m.get_storage(),
+        1);
+
+    root->template insert<&overwrite_merge_fn_memcache_uint64>(
+        UInt64Prefix(0xAAAA'BBBB'CCCC'000F),
+        m.get_gc(),
+        1,
+        m.get_storage(),
+        2);
+
+    root->template insert<&overwrite_merge_fn_memcache_uint64>(
+        UInt64Prefix(0xAAAA'BBBB'CCCC'FFFF),
+        m.get_gc(),
+        1,
+        m.get_storage(),
+        3);
+
+    /**
+     *  trie consists of AAAABBBBCCCC | - 000 | - 0
+     *                                |       | - F
+     *                                |
+     *                                | - FFFF
+     */
+    
+    auto check_exist = [&] (uint64_t expect, uint64_t key)
+    {
+        const auto* ptr = m.get_value(UInt64Prefix(key));
+
+        REQUIRE(!!ptr);
+
+        REQUIRE(ptr -> value == expect);
+    };
+
+    auto check_nexist = [&] (uint64_t key)
+    {
+        REQUIRE(!m.get_value(UInt64Prefix(key)));
+    };
+
+    SECTION("everything evicted")
+    {
+        m.hash_and_normalize(2);
+
+        REQUIRE(m.get_storage().get_store_count() == 6);
+
+        check_exist(3, 0xAAAA'BBBB'CCCC'FFFF);
+
+        REQUIRE(m.get_storage().get_load_count() == 4);
+        check_nexist(0);
+        REQUIRE(m.get_storage().get_load_count() == 4);
+
+        check_nexist(0xAAAA'BBBB'CCCC'0111);
+
+        // this loads in 0xAAAA'BBBB'CCCC'000,
+        // as get_value() never recurses onto an evicted node
+        // and does not check children for prefix partial maches
+        // (unlike insert, which checks prefix match prior to recursion)
+        REQUIRE(m.get_storage().get_load_count() == 7);
+
+        check_nexist(0xAAAA'BBBB'CCCC'0001);
+
+        REQUIRE(m.get_storage().get_load_count() == 7);
+
+        check_exist(2, 0xAAAA'BBBB'CCCC'000F);
+        REQUIRE(m.get_storage().get_load_count() == 8);
+
+
+        check_exist(1, 0xAAAA'BBBB'CCCC'0000);
+        REQUIRE(m.get_storage().get_load_count() == 9);
+    }
+}
+
 } // namespace trie

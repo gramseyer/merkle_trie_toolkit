@@ -23,6 +23,9 @@ class InMemoryInterface
 
     std::map<TimestampPointerPair, std::vector<uint8_t>> values;
 
+    uint32_t stores = 0;
+    uint32_t loads = 0;
+
   public:
     constexpr static uint8_t KEY_LEN_BYTES = _KEY_LEN_BYTES;
 
@@ -41,6 +44,7 @@ class InMemoryInterface
         }
 
         values[key] = value.get_buffer();
+        stores++;
     }
 
     result_t restore_durable_value(TimestampPointerPair const& key)
@@ -55,6 +59,7 @@ class InMemoryInterface
         }
 
         out.get_backing_data() = it->second;
+        loads++;
 
         return out;
     }
@@ -64,6 +69,15 @@ class InMemoryInterface
         std::lock_guard lock(mtx);
 
         return values.at(key);
+    }
+
+    uint32_t get_store_count() const {
+        std::lock_guard lock(mtx);
+        return stores;
+    }
+    uint32_t get_load_count() const {
+        std::lock_guard lock(mtx);
+        return loads;
     }
 };
 

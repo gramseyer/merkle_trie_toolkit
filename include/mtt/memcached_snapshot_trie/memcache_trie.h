@@ -827,7 +827,7 @@ MCTN_DECL ::compute_hash_and_normalize(deferred_gc_t auto& gc,
         if (child->get_last_modified_ts() <= timestamp_evict_threshold) {
             node_t* new_child = child->evict_self();
             trie_assert(new_child != nullptr, "invalid eviction");
-            gc.free(child);
+            gc.free(child); // has to be before try_add_child modifies 'child' variable
             bool res = try_add_child(bb, child, new_child);
             trie_assert(res, "concurrency fail");
         }
@@ -924,7 +924,7 @@ MCTN_DECL::get_value(const prefix_t& query_prefix,
     trie_assert(!is_evicted(), "cannot get_value from evicted node");
 
     if (is_leaf()) {
-        auto const& v = std::get<variant_value_t>(body);
+        auto& v = std::get<variant_value_t>(body);
         if (query_prefix == prefix && v.has_value()) {
             return &(*v);
         }
