@@ -96,6 +96,7 @@ class AtomicMerkleTrieNode
 
   public:
     struct value_nullopt_t {};
+    struct value_opt_t {};
 
     using value_t = optional_value_t::value_type;
 
@@ -111,7 +112,7 @@ class AtomicMerkleTrieNode
 
     template<typename... value_args>
     // value node
-    AtomicMerkleTrieNode(prefix_t const& prefix, value_args const& ...args)
+    AtomicMerkleTrieNode(prefix_t const& prefix, value_opt_t const&, value_args const& ...args)
         : value(std::in_place_t{}, args...)
         , prefix(prefix)
         , prefix_len(MAX_KEY_LEN_BITS)
@@ -120,7 +121,8 @@ class AtomicMerkleTrieNode
         , metadata()
     // size(0)
     //, hash()
-    {}
+    {
+    }
 
     struct map_node_args_t {
         prefix_t const& prefix;
@@ -332,10 +334,10 @@ template<typename prefix_t,
          typename value_t,
          uint32_t TLCACHE_SIZE,
          SnapshotTrieMetadata metadata_t = SnapshotTrieMetadataBase,
-         template<typename T> class value_wrapper = OptionalValue>
+         auto has_value_f = detail::default_value_selector<value_t>>
 class AtomicMerkleTrie
 {
-    using node_t = AtomicMerkleTrieNode<prefix_t, value_wrapper<value_t>, metadata_t>;
+    using node_t = AtomicMerkleTrieNode<prefix_t, OptionalValue<value_t, has_value_f>, metadata_t>;
     using gc_t = AtomicMerkleTrieGC<node_t, TLCACHE_SIZE>;
 
     node_t* root;
@@ -425,7 +427,7 @@ AMTN_DECL::insert(prefix_t const& new_prefix,
     trie_assert(prefix_match_len == prefix_len, "invalid insertion");
 
     if (is_leaf()) {
-        if (value.has_value())
+        if (value.has_opt_value())
         {
             value_merge_fn(*value, args...);
         }
@@ -445,7 +447,7 @@ AMTN_DECL::insert(prefix_t const& new_prefix,
         if (child == nullptr) {
             // insert new node
             node_t* new_node
-                = new node_t(new_prefix,
+                = new node_t(new_prefix, value_opt_t{},
                             args...);
             new_node->validate_value();
 
@@ -532,7 +534,7 @@ uint8_t
 AMTN_DECL ::get_num_children() const
 {
     if (is_leaf()) {
-        if (value.has_value()) {
+        if (value.has_logical_value()) {
             return UINT8_MAX;
         }
         return 0;
@@ -639,7 +641,7 @@ AMTN_DECL ::compute_hash_and_normalize(AMT_gc_t auto& gc,
     }
 
     if (is_leaf()) {
-        if (!value.has_value()) {
+        if (!value.has_logical_value()) {
             metadata.size = 0;
             return metadata;
         }
@@ -771,7 +773,7 @@ AMTN_DECL::value_t*
 AMTN_DECL::get_value(const prefix_t& query_prefix) const
 {
     if (is_leaf()) {
-        if (query_prefix == prefix && value.has_value()) {
+        if (query_prefix == prefix && value.has_opt_value()) {
             return &(*value);
         }
         return nullptr;
@@ -791,6 +793,7 @@ AMTN_DECL::get_value(const prefix_t& query_prefix) const
     }
     return ptr->get_value(query_prefix);
 }
+
 
 #undef AMTN_DECL
 #undef AMTN_TEMPLATE

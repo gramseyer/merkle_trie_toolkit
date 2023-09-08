@@ -15,7 +15,7 @@ auto default_value_selector = [](T const&) -> bool { return true; };
 }
 
 template<typename value_t,
-         auto has_value_f = detail::default_value_selector<value_t>>
+         auto has_value_f>
 class OptionalValue
 {
     std::optional<value_t> base;
@@ -26,7 +26,8 @@ class OptionalValue
     template<typename... T>
     OptionalValue(T&&... args)
         : base(std::forward<T>(args)...)
-    {}
+    {
+    }
 
     template<typename... T>
     void emplace(T&&... args)
@@ -44,9 +45,13 @@ class OptionalValue
 
     const value_t* operator->() const { return &(*base); }
 
-    bool has_value() const
+    bool has_opt_value() const {
+        return base.has_value();
+    }
+
+    bool has_logical_value() const
     {
-        if (!base) {
+        if (!base.has_value()) {
             return false;
         }
         return has_value_f(*base);
