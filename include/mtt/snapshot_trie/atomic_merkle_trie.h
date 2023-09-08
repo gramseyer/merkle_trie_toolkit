@@ -12,12 +12,15 @@
 #include <atomic>
 #include <cstdint>
 #include <utility>
+#include <type_traits>
 
 #include <utils/threadlocal_cache.h>
 
 #include "mtt/snapshot_trie/concepts.h"
 
 #include <sodium.h>
+
+#include "mtt/snapshot_trie/optional_value.h"
 
 namespace trie {
 
@@ -61,10 +64,10 @@ concept AMT_gc_t = requires(T** a)
     []<typename node_t, uint32_t x>(AtomicMerkleTrieGC<node_t, x>**) {}(a);
 };
 
-template<typename prefix_t, typename value_t, SnapshotTrieMetadata metadata_t>
+template<typename prefix_t, typename optional_value_t, SnapshotTrieMetadata metadata_t>
 class AtomicMerkleTrieNode
 {
-    using node_t = AtomicMerkleTrieNode<prefix_t, value_t, metadata_t>;
+    using node_t = AtomicMerkleTrieNode<prefix_t, optional_value_t, metadata_t>;
 
     static_assert(std::atomic<node_t*>::is_always_lock_free,
                   "ptr should be lockfree");
@@ -72,7 +75,7 @@ class AtomicMerkleTrieNode
     union
     {
         std::array<std::atomic<node_t*>, 16> children;
-        std::optional<value_t> value;
+        optional_value_t value; //std::optional<value_t> value;
     };
 
     const prefix_t prefix;
@@ -93,6 +96,8 @@ class AtomicMerkleTrieNode
 
   public:
     struct value_nullopt_t {};
+
+    using value_t = optional_value_t::value_type;
 
     AtomicMerkleTrieNode(prefix_t const& prefix, value_nullopt_t const&)
         : value(std::nullopt)
@@ -198,7 +203,7 @@ class AtomicMerkleTrieNode
 
     ~AtomicMerkleTrieNode()
     {
-        using dtor_t = std::optional<value_t>;
+        using dtor_t = optional_value_t;
         if (is_leaf()) {
             value.~dtor_t();
         } else {
@@ -326,10 +331,11 @@ class AtomicMerkleTrieNode
 template<typename prefix_t,
          typename value_t,
          uint32_t TLCACHE_SIZE,
-         SnapshotTrieMetadata metadata_t = SnapshotTrieMetadataBase>
+         SnapshotTrieMetadata metadata_t = SnapshotTrieMetadataBase,
+         template<typename T> class value_wrapper = OptionalValue>
 class AtomicMerkleTrie
 {
-    using node_t = AtomicMerkleTrieNode<prefix_t, value_t, metadata_t>;
+    using node_t = AtomicMerkleTrieNode<prefix_t, value_wrapper<value_t>, metadata_t>;
     using gc_t = AtomicMerkleTrieGC<node_t, TLCACHE_SIZE>;
 
     node_t* root;
@@ -344,6 +350,12 @@ class AtomicMerkleTrie
             query_prefix, query_len, gc);
         root->invalidate_hash_to_node(out);
         return out;
+    }
+
+    node_t* get_root_and_invalidate_hash()
+    {
+        root->invalidate_hash_to_node(root);
+        return root;
     }
 
     gc_t& get_gc() { return gc; }
@@ -383,18 +395,18 @@ class AtomicMerkleTrie
 
     value_t* get_value(prefix_t const& query)
     {
+        using const_self_t = const std::remove_pointer<decltype(this)>::type;
         return const_cast<value_t*>(
-            const_cast<
-                const AtomicMerkleTrie<prefix_t, value_t, TLCACHE_SIZE, metadata_t>*>(this)
+            const_cast<const_self_t*>(this)
                 ->get_value(query));
     }
 };
 
 #define AMTN_TEMPLATE                                                          \
     template<typename prefix_t,                                                \
-             typename value_t,                                                 \
+             typename optional_value_t,                                        \
              SnapshotTrieMetadata metadata_t>
-#define AMTN_DECL AtomicMerkleTrieNode<prefix_t, value_t, metadata_t>
+#define AMTN_DECL AtomicMerkleTrieNode<prefix_t, optional_value_t, metadata_t>
 
 AMTN_TEMPLATE
 template<auto value_merge_fn, typename... value_args>
@@ -754,7 +766,8 @@ AMTN_DECL ::delete_value(const prefix_t& delete_prefix, AMT_gc_t auto& gc)
 }
 
 AMTN_TEMPLATE
-const value_t*
+const 
+AMTN_DECL::value_t*
 AMTN_DECL::get_value(const prefix_t& query_prefix) const
 {
     if (is_leaf()) {
