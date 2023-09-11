@@ -71,6 +71,7 @@ template<typename metadata_t>
 struct __attribute__((packed)) DurableMapNode
 {
     metadata_t metadata;
+    Hash hash;
     uint16_t key_len_bits;
     uint16_t bv;
     TimestampPointerPair previous;
@@ -96,6 +97,7 @@ template<typename metadata_t>
 struct __attribute__((packed)) DurableValueHeader
 {
     metadata_t metadata;
+    Hash hash;
     TimestampPointerPair previous;
     uint32_t value_len;
 
@@ -177,7 +179,8 @@ class DurableValue
 
     template<typename ValueType, typename metadata_t>
     void make_value_node(const TriePrefix auto& key,
-                         metadata_t const& h,
+                         metadata_t const& metadata,
+                         Hash const& hash,
                          TimestampPointerPair const& previous,
                          ValueType const& v)
     {
@@ -186,7 +189,8 @@ class DurableValue
         uint32_t value_h_offset = buffer.size();
         constexpr uint32_t value_h_size
             = sizeof(DurableValueHeader<metadata_t>);
-        append_type(h);
+        append_type(metadata);
+        append_type(hash);
         append_type(previous);
         append_type(static_cast<uint32_t>(0));
         v.copy_data(buffer);

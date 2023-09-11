@@ -58,6 +58,7 @@ class MemcacheTrieNode
 
     bool children_owned = false;
     metadata_t metadata;
+    Hash hash;
 
     constexpr static uint16_t KEY_LEN_BYTES = prefix_t::size_bytes();
     static_assert(KEY_LEN_BYTES <= UINT8_MAX,
@@ -83,6 +84,7 @@ class MemcacheTrieNode
         , previous_logged_ts(std::nullopt)
         , children_owned(false)
         , metadata()
+        , hash()
     {}
 
     template<typename... value_args>
@@ -100,6 +102,7 @@ class MemcacheTrieNode
         , previous_logged_ts(previous_logged_ts)
         , children_owned(false)
         , metadata()
+        , hash()
     {}
 
     struct map_node_args_t
@@ -126,6 +129,7 @@ class MemcacheTrieNode
         , previous_logged_ts(previous_logged_ts)
         , children_owned(false)
         , metadata()
+        , hash()
     {
         trie_assert(prefix_len != MAX_KEY_LEN_BITS, "wrong ctor used");
     }
@@ -136,6 +140,7 @@ class MemcacheTrieNode
         prefix_t const& prefix;
         PrefixLenBits prefix_len;
         metadata_t const& metadata;
+        Hash const& hash;
     };
 
     // ptr node
@@ -150,6 +155,7 @@ class MemcacheTrieNode
         , previous_logged_ts(std::nullopt)
         , children_owned(false)
         , metadata(args.metadata)
+        , hash(args.hash)
     {}
 
     void set_unique_child(uint8_t bb, node_t* ptr)
@@ -173,13 +179,15 @@ class MemcacheTrieNode
         , previous_logged_ts(previous_logged_ts)
         , children_owned(true)
         , metadata()
+        , hash()
     {}
 
     void commit_ownership() { children_owned = true; }
 
-    void set_metadata(const metadata_t& m)
+    void set_metadata(const metadata_t& m, const Hash& h)
     {
         metadata = m;
+        hash = h;
         metadata_valid.store(true, std::memory_order_release);
     }
 
@@ -327,6 +335,12 @@ class MemcacheTrieNode
         return metadata;
     }
 
+    const Hash& get_hash() const {
+        trie_assert(metadata_valid.load(std::memory_order_acquire),
+                    "invalid hash acquired");
+        return hash;
+    }
+
     void delete_value(const prefix_t& delete_prefix,
                       uint32_t ts,
                       deferred_gc_t auto& gc,
@@ -410,7 +424,7 @@ class MemcacheTrie
         std::vector<uint8_t> digest_bytes;
         root->compute_hash_and_normalize(
             gc, eviction_threshold, digest_bytes, storage);
-        return root->get_metadata().hash;
+        return root->get_hash();
     }
 
     value_t* get_value(prefix_t const& query)
@@ -448,7 +462,7 @@ load_evicted_ptr(TimestampPointerPair const& storage_ptr,
                                  value_header.previous,
                                  value_slice);
 
-        out->set_metadata(value_header.metadata);
+        out->set_metadata(value_header.metadata, value_header.hash);
         return out;
     }
 
@@ -483,6 +497,14 @@ load_evicted_ptr(TimestampPointerPair const& storage_ptr,
             return res_child.template get_map<metadata_t>().metadata;
         };
 
+         auto get_hash = [&res_child]() -> const Hash& {
+            if (res_child.is_value()) {
+                return res_child.template get_value<metadata_t>().hash;
+            }
+            utils::print_assert(!res_child.is_delete(), "invalid load");
+            return res_child.template get_map<metadata_t>().hash;
+        };
+
         typename node_t::ptr_node_args_t ptr_args{
             .tsp = map_node.children[counter],
             .prefix = prefix_t(result.get_key().ptr, slice_ctor_t{}),
@@ -490,7 +512,8 @@ load_evicted_ptr(TimestampPointerPair const& storage_ptr,
             = result.is_value()
                   ? prefix_t::len()
                   : result.template get_map<metadata_t>().key_len_bits,
-            .metadata = get_meta()
+            .metadata = get_meta(),
+            .hash = get_hash()
         };
 
         node_t* ptr_child = new node_t(ptr_args);
@@ -774,8 +797,8 @@ MCTN_DECL ::compute_hash_and_normalize(deferred_gc_t auto& gc,
         // sets size = 1
         metadata.from_value(*value);
 
-        if (crypto_generichash(metadata.hash.data(),
-                               metadata.hash.size(),
+        if (crypto_generichash(hash.data(),
+                               hash.size(),
                                digest_bytes.data(),
                                digest_bytes.size(),
                                NULL,
@@ -855,8 +878,8 @@ MCTN_DECL ::compute_hash_and_normalize(deferred_gc_t auto& gc,
         m.write_to(digest_bytes);
     }
 
-    if (crypto_generichash(metadata.hash.data(),
-                           metadata.hash.size(),
+    if (crypto_generichash(hash.data(),
+                           hash.size(),
                            digest_bytes.data(),
                            digest_bytes.size(),
                            NULL,
@@ -979,6 +1002,7 @@ MCTN_DECL::log_self_active(DurableInterface auto& interface)
 
         v.make_value_node(prefix,
                           metadata,
+                          hash,
                           get_previous_ts_ptr(),
                           *std::get<variant_value_t>(body));
         interface.log_durable_value(get_ts_ptr(), v);
@@ -989,6 +1013,7 @@ MCTN_DECL::log_self_active(DurableInterface auto& interface)
     DurableMapNode<metadata_t> m;
 
     m.metadata = metadata;
+    m.hash = hash;
     m.key_len_bits = prefix_len.len;
     m.previous = get_previous_ts_ptr();
     TrieBitVector bv;
@@ -1040,7 +1065,7 @@ MCTN_DECL::evict_self() const
     }
 
     return new node_t(
-        ptr_node_args_t{ get_ts_ptr(), prefix, prefix_len, metadata });
+        ptr_node_args_t{ get_ts_ptr(), prefix, prefix_len, metadata, hash });
 }
 
 #undef MCTN_DECL

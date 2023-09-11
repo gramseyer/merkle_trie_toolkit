@@ -7,13 +7,10 @@ namespace trie {
 struct __attribute__((packed))
 SnapshotTrieMetadataBase
 {
-    Hash hash;
     int32_t size = 0;
 
     void write_to(std::vector<uint8_t>& digest_bytes) const
-    {
-        digest_bytes.insert(digest_bytes.end(), hash.begin(), hash.end());
-    }
+    {}
 
     template<typename T>
     void from_value(T const& value)

@@ -87,7 +87,7 @@ class AtomicMerkleTrieNode
 
     metadata_t metadata;
     // int32_t size;
-    // Hash hash;
+    Hash hash;
 
     constexpr static uint16_t KEY_LEN_BYTES = prefix_t::size_bytes();
 
@@ -107,6 +107,7 @@ class AtomicMerkleTrieNode
         , hash_valid(false)
         , children_owned(false)
         , metadata()
+        , hash()
     {
     }
 
@@ -119,6 +120,7 @@ class AtomicMerkleTrieNode
         , hash_valid(false)
         , children_owned(false)
         , metadata()
+        , hash()
     // size(0)
     //, hash()
     {
@@ -141,6 +143,7 @@ class AtomicMerkleTrieNode
         , hash_valid(false)
         , children_owned(false)
         , metadata()
+        , hash()
     //, size(0)
     //, hash()
     {
@@ -164,6 +167,7 @@ class AtomicMerkleTrieNode
         , hash_valid(false)
         , children_owned(true)
         , metadata()
+        , hash()
     //, size(0)
     //, hash()
     {}
@@ -286,9 +290,9 @@ class AtomicMerkleTrieNode
 
         metadata.write_to(bytes);
 
-        // bytes.insert(bytes.end(),
-        //	hash.begin(),
-        //	hash.end());
+         bytes.insert(bytes.end(),
+        	hash.begin(),
+        	hash.end());
     }
 
     Hash get_hash() const
@@ -296,7 +300,7 @@ class AtomicMerkleTrieNode
         trie_assert(hash_valid.load(std::memory_order_acquire),
                     "invalid hash appended");
 
-        return metadata.hash;
+        return hash;
     }
 
     void delete_value(const prefix_t& delete_prefix, AMT_gc_t auto& gc);
@@ -643,6 +647,7 @@ AMTN_DECL ::compute_hash_and_normalize(AMT_gc_t auto& gc,
     if (is_leaf()) {
         if (!value.has_logical_value()) {
             metadata.size = 0;
+            hash_valid = true;
             return metadata;
         }
 
@@ -654,8 +659,8 @@ AMTN_DECL ::compute_hash_and_normalize(AMT_gc_t auto& gc,
         // sets size = 1
         metadata.from_value(*value);
 
-        if (crypto_generichash(metadata.hash.data(),
-                               metadata.hash.size(),
+        if (crypto_generichash(hash.data(),
+                               hash.size(),
                                digest_bytes.data(),
                                digest_bytes.size(),
                                NULL,
@@ -670,7 +675,9 @@ AMTN_DECL ::compute_hash_and_normalize(AMT_gc_t auto& gc,
         return metadata;
     }
 
-    metadata_t new_metadata;
+    metadata = metadata_t();
+
+    //metadata_t new_metadata;
     // int32_t new_size = 0;
 
     int32_t num_children = 0;
@@ -681,9 +688,20 @@ AMTN_DECL ::compute_hash_and_normalize(AMT_gc_t auto& gc,
         if (child == nullptr)
             continue;
 
-        new_metadata += child->compute_hash_and_normalize(gc, digest_bytes);
+       /* auto child_m = child -> compute_hash_and_normalize(gc, digest_bytes);
+        if (child_m.size == 0)
+        {
+            erase_child(bb, gc);
+            continue;
+        }
+
+        metadata += child_m; */
+
+        metadata += child->compute_hash_and_normalize(gc, digest_bytes);
 
         uint8_t child_count = child->get_num_children();
+        // if child is leaf and has_logical_value() == false,
+        // then child_count is 0 and the child is deleted.
         if (child_count == 0) {
             erase_child(bb, gc);
         } else if (child_count == 1) {
@@ -701,7 +719,7 @@ AMTN_DECL ::compute_hash_and_normalize(AMT_gc_t auto& gc,
             num_children++;
         }
     }
-    metadata = new_metadata;
+    //metadata = new_metadata;
     // metadata.size = new_size;
 
     // size.store(new_size, std::memory_order_release);
@@ -723,8 +741,8 @@ AMTN_DECL ::compute_hash_and_normalize(AMT_gc_t auto& gc,
         ptr->append_hash_to_vec(digest_bytes);
     }
 
-    if (crypto_generichash(metadata.hash.data(),
-                           metadata.hash.size(),
+    if (crypto_generichash(hash.data(),
+                           hash.size(),
                            digest_bytes.data(),
                            digest_bytes.size(),
                            NULL,

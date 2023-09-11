@@ -35,4 +35,18 @@ struct SerializeWrapper : public V
 	}
 };
 
+template<typename V, auto serialize_fn>
+struct BetterSerializeWrapper : public V
+{
+	template<typename... args>
+	BetterSerializeWrapper(args... a) : V(a...) {}
+
+	void copy_data(std::vector<uint8_t>& buf) const
+	{
+		serialize_fn(buf, *this);
+	//	auto serialization = serialize_fn(*this);
+	//	buf.insert(buf.end(), serialization.begin(), serialization.end());
+	}
+};
+
 } 

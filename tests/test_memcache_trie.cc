@@ -141,6 +141,7 @@ TEST_CASE("basic memcache check log insert", "[memcache]")
     };
 
     add_expect(obj_ptr->get_metadata());
+    add_expect(obj_ptr->get_hash());
 
     add_expect(obj_tsp);
     // value len is 32
@@ -149,6 +150,7 @@ TEST_CASE("basic memcache check log insert", "[memcache]")
 
     expect = { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
     add_expect(root_ptr->get_metadata());
+    add_expect(root_ptr -> get_hash());
     add_expect(static_cast<uint16_t>(0));
     add_expect(static_cast<uint16_t>(1 << 10)); // A
     add_expect(root_tsp);

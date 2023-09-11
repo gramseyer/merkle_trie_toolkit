@@ -401,4 +401,96 @@ TEST_CASE("deletions", "[amt]")
     }
 }
 
+namespace detail {
+    struct invalidateable_logical_value {
+        bool valid;
+        uint64_t uid;
+    };
+
+    static bool validation_lambda(const invalidateable_logical_value& v)
+    {
+        return v.valid;
+    }
+
+    static void lv_serialize(std::vector<uint8_t>& buf, const invalidateable_logical_value& v)
+    {
+        return utils::write_unsigned_little_endian(buf, v.uid);
+    }
+
+    void
+    no_merge_fn(invalidateable_logical_value& a, const invalidateable_logical_value& b)
+    {
+        throw std::runtime_error("should not happen");
+    }
+}
+
+TEST_CASE("no logical value", "[amt]")
+{
+    using value_t = BetterSerializeWrapper<detail::invalidateable_logical_value, &detail::lv_serialize>;
+
+    using metadata_t = SnapshotTrieMetadataBase;
+    using prefix_t = UInt64Prefix;
+
+    using mt = AtomicMerkleTrie<prefix_t, value_t, 64, metadata_t, &detail::validation_lambda>;
+
+    mt m;
+
+    auto h = m.hash_and_normalize();
+
+    auto make_lv = [](bool valid, uint64_t id) {
+        return detail::invalidateable_logical_value {
+            .valid = valid,
+            .uid = id
+        };
+    };
+
+    SECTION("only empty values")
+    {
+        auto root = m.get_root_and_invalidate_hash();
+
+        root -> template insert<&detail::no_merge_fn>(UInt64Prefix(0x0000'0000'0000'0001), m.get_gc(), make_lv(false, 0));
+        root -> template insert<&detail::no_merge_fn>(UInt64Prefix(0x0000'0000'0000'0002), m.get_gc(), make_lv(false, 1));
+        root -> template insert<&detail::no_merge_fn>(UInt64Prefix(0x0000'0000'0000'0010), m.get_gc(), make_lv(false, 2));
+        root -> template insert<&detail::no_merge_fn>(UInt64Prefix(0x0000'0000'0000'0100), m.get_gc(), make_lv(false, 3));
+        root -> template insert<&detail::no_merge_fn>(UInt64Prefix(0x0000'0000'0000'1000), m.get_gc(), make_lv(false, 4));
+
+        REQUIRE(m.hash_and_normalize() == h);
+
+        //nodes should not even exist in the tree
+        root -> template insert<&detail::no_merge_fn>(UInt64Prefix(0x0000'0000'0000'0001), m.get_gc(), make_lv(false, 0));
+    }
+
+    SECTION("some values")
+    {
+        auto root = m.get_root_and_invalidate_hash();
+
+        mt m2, m3;
+
+        auto root2 = m2.get_root_and_invalidate_hash();
+        auto root3 = m3.get_root_and_invalidate_hash();
+
+        root -> template insert<&detail::no_merge_fn>(UInt64Prefix(0x0000'0000'0000'0001), m.get_gc(), make_lv(true, 0));
+        root2 -> template insert<&detail::no_merge_fn>(UInt64Prefix(0x0000'0000'0000'0001), m.get_gc(), make_lv(true, 0));
+
+        root -> template insert<&detail::no_merge_fn>(UInt64Prefix(0x0000'0000'0000'0002), m.get_gc(), make_lv(false, 1));
+        root -> template insert<&detail::no_merge_fn>(UInt64Prefix(0x0000'0000'0000'0010), m.get_gc(), make_lv(false, 2));
+        root -> template insert<&detail::no_merge_fn>(UInt64Prefix(0x0000'0000'0000'0100), m.get_gc(), make_lv(false, 3));
+
+        root -> template insert<&detail::no_merge_fn>(UInt64Prefix(0x0000'0000'0000'1000), m.get_gc(), make_lv(true, 4));
+        root2 -> template insert<&detail::no_merge_fn>(UInt64Prefix(0x0000'0000'0000'1000), m.get_gc(), make_lv(true, 4));
+        root3 -> template insert<&detail::no_merge_fn>(UInt64Prefix(0x0000'0000'0000'1000), m.get_gc(), make_lv(true, 4));
+
+        REQUIRE(m.hash_and_normalize() == m2.hash_and_normalize());
+
+        auto* n1 = m.get_subnode_ref_and_invalidate_hash(UInt64Prefix(0x0000'0000'0000'0001),
+                                              PrefixLenBits(64));
+
+        auto* v = n1->get_value(UInt64Prefix(0x0000'0000'0000'0001));
+        v -> valid = false;
+
+        REQUIRE(m.hash_and_normalize() == m3.hash_and_normalize());
+        REQUIRE(m2.hash_and_normalize() != m3.hash_and_normalize());
+    }
+}
+
 } // namespace trie
