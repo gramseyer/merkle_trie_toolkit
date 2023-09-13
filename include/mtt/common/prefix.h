@@ -372,6 +372,10 @@ public:
 
 		set_byte(byte_index, next_byte);
 	}
+
+	uint8_t* underlying_data_ptr() {
+		return reinterpret_cast<uint8_t*>(data.data());
+	}
 };
 
 //! Prefix specialized to case where key is a single uint64_t.
