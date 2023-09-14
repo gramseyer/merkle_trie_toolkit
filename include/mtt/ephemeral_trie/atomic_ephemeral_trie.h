@@ -476,6 +476,10 @@ class AtomicTrie
     {
         return root.get_value(query_prefix, allocator);
     }
+
+    const_applyable_ref get_applyable_ref() const {
+        return const_applyable_ref { &root, allocator };
+    }
 };
 
 template<typename main_trie_t>

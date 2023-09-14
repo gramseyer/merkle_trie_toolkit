@@ -107,4 +107,43 @@ TEST_CASE("hash", "[atomic]")
 	}
 }
 
+TEST_CASE("apply keys", "[atomic]")
+{
+	using trie_t = AtomicTrie<EmptyValue, UInt64Prefix>;
+	trie_t trie;
+	auto alloc = trie.get_new_allocation_context();
+
+	trie.insert(UInt64Prefix(0x0000'0000'0000'0000), EmptyValue{}, alloc);
+	trie.insert(UInt64Prefix(0x0000'0000'0000'0001), EmptyValue{}, alloc);
+	trie.insert(UInt64Prefix(0x0000'0000'0000'0010), EmptyValue{}, alloc);
+	trie.insert(UInt64Prefix(0x0000'0000'0000'0100), EmptyValue{}, alloc);
+	trie.insert(UInt64Prefix(0x0000'0000'0000'1000), EmptyValue{}, alloc);
+
+	uint64_t x = 0;
+	auto lambda = [&] (trie_t::prefix_t const& prefix) {
+		x++;
+	};
+
+	auto ref = trie.get_applyable_ref();
+
+	ref.apply_to_keys(lambda, 64);
+	REQUIRE(x == 5);
+
+	x = 0;
+	ref.apply_to_keys(lambda, 60);
+	REQUIRE(x == 4);
+
+	x = 0;
+	ref.apply_to_keys(lambda, 56);
+	REQUIRE(x == 3);
+
+	x = 0;
+	ref.apply_to_keys(lambda, 32);
+	REQUIRE(x == 1);
+
+	x = 0;
+	ref.apply_to_keys(lambda, 0);
+	REQUIRE(x == 1);
+}
+
 } // namespace trie
