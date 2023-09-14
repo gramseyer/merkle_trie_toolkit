@@ -8,6 +8,7 @@
 
 #include "mtt/memcached_snapshot_trie/in_memory_interface.h"
 #include "mtt/memcached_snapshot_trie/memcache_trie.h"
+#include "mtt/memcached_snapshot_trie/utils.h"
 #include "mtt/trie/types.h"
 #include "mtt/trie/utils.h"
 
@@ -77,7 +78,7 @@ test_log_delete(std::vector<uint8_t> const& raw,
 TEST_CASE("basic memcache trie get subnode ref and normalize", "[memcache]")
 {
     using mt
-        = MemcacheTrie<UInt64Prefix, EmptyValue, 256, InMemoryInterface<8>>;
+        = MemcacheTrie<UInt64Prefix, EmptyDurableValue, 256, InMemoryInterface<8>>;
 
     mt m(0);
 
@@ -101,13 +102,13 @@ TEST_CASE("basic memcache trie get subnode ref and normalize", "[memcache]")
 }
 
 void
-overwrite_merge_fn_memcache(EmptyValue& a, const EmptyValue& b)
+overwrite_merge_fn_memcache(EmptyDurableValue& a, const EmptyDurableValue& b)
 {}
 
 TEST_CASE("basic memcache check log insert", "[memcache]")
 {
     using mt
-        = MemcacheTrie<UInt64Prefix, EmptyValue, 256, InMemoryInterface<8>>;
+        = MemcacheTrie<UInt64Prefix, EmptyDurableValue, 256, InMemoryInterface<8>>;
 
     mt m(0);
 
@@ -119,7 +120,7 @@ TEST_CASE("basic memcache check log insert", "[memcache]")
         m.get_gc(),
         1,
         m.get_storage(),
-        EmptyValue{});
+        EmptyDurableValue{});
 
     auto* obj_ptr = m.get_subnode_ref_and_invalidate_hash(
         UInt64Prefix(0xAAAA'BBBB'CCCC'DDDD), PrefixLenBits{ 64 }, 1);
@@ -164,7 +165,7 @@ TEST_CASE("basic memcache check log insert", "[memcache]")
 TEST_CASE("basic memcache check deletions", "[memcache]")
 {
     using mt
-        = MemcacheTrie<UInt64Prefix, EmptyValue, 256, InMemoryInterface<8>>;
+        = MemcacheTrie<UInt64Prefix, EmptyDurableValue, 256, InMemoryInterface<8>>;
 
     mt m(0);
 
@@ -176,7 +177,7 @@ TEST_CASE("basic memcache check deletions", "[memcache]")
         m.get_gc(),
         1,
         m.get_storage(),
-        EmptyValue{});
+        EmptyDurableValue{});
     auto* p1 = m.get_subnode_ref_and_invalidate_hash(
         UInt64Prefix(0xAAAA'BBBB'CCCC'0000), PrefixLenBits{ 64 }, 1);
     root->template insert<&overwrite_merge_fn_memcache>(
@@ -184,7 +185,7 @@ TEST_CASE("basic memcache check deletions", "[memcache]")
         m.get_gc(),
         1,
         m.get_storage(),
-        EmptyValue{});
+        EmptyDurableValue{});
     auto* p2 = m.get_subnode_ref_and_invalidate_hash(
         UInt64Prefix(0xAAAA'BBBB'CCCC'000F), PrefixLenBits{ 64 }, 1);
     root->template insert<&overwrite_merge_fn_memcache>(
@@ -192,7 +193,7 @@ TEST_CASE("basic memcache check deletions", "[memcache]")
         m.get_gc(),
         1,
         m.get_storage(),
-        EmptyValue{});
+        EmptyDurableValue{});
 
     auto* intermediate = m.get_subnode_ref_and_invalidate_hash(
         UInt64Prefix(0xAAAA'BBBB'CCCC'000F), PrefixLenBits{ 60 }, 1);

@@ -11,6 +11,7 @@
 Miscellaneous classes for trie data structures.
 
 */
+
 namespace trie {
 
 struct EmptyValue {
@@ -18,8 +19,7 @@ struct EmptyValue {
 	// used when hashing tries
 	constexpr static void copy_data(std::vector<uint8_t>& buf) {}
 
-	template<typename... Args>
-	EmptyValue(Args...) {}
+	EmptyValue() = default;
 };
 
 template<typename V, auto serialize_fn>

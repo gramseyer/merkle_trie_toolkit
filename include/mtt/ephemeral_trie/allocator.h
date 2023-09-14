@@ -302,9 +302,9 @@ struct ConstApplyableNodeReference
     }
 
     template<typename ApplyFn>
-    void apply_to_keys(ApplyFn& fn) const
+    void apply_to_keys(ApplyFn& fn, PrefixLenBits max_len = ValueType::prefix_t::len()) const
     {
-       ptr->apply_to_keys(fn, allocator);
+       ptr->apply_to_keys(fn, max_len, allocator);
     }
 
     template<typename ApplyFn>

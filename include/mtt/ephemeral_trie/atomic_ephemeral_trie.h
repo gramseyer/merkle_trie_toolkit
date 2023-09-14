@@ -261,6 +261,26 @@ class alignas(64) AtomicTrieNode : private utils::NonMovableOrCopyable
         }
     }
 
+    template<typename ApplyFn>
+    void apply_to_keys(ApplyFn& fn, const PrefixLenBits max_len, const allocator_t& allocator) const
+    {
+        if (prefix_len >= max_len)
+        {
+            fn(prefix);
+            return;
+        }
+
+        for (uint8_t bb = 0; bb < 16; bb++)
+        {
+            uint32_t ptr = children.get(bb) >> 32;
+            if (ptr != UINT32_MAX)
+            {
+                auto const& child = allocator.get_object(ptr);
+                child.apply_to_keys(fn, max_len, allocator);
+            }
+        }
+    }
+
     template<typename VectorType, auto get_fn>
     void accumulate_values_parallel_worker(VectorType& output,
                                             size_t vector_offset,
@@ -311,6 +331,9 @@ class AtomicTrie
     using allocator_t = typename node_t::allocator_t;//EphemeralTrieNodeAllocator<node_t, LOG_BUFSIZE>;
     using allocation_context_t = typename allocator_t::context_t;
     using value_t = ValueType;
+
+    using const_applyable_ref = ConstApplyableNodeReference<allocator_t>;
+    using applyable_ref = ApplyableNodeReference<allocator_t>;
 
   private:
     allocator_t allocator;
@@ -387,7 +410,7 @@ class AtomicTrie
 
                 auto const* ptr = &allocator.get_object(range.work_list[i] >> 32);
 
-                ConstApplyableNodeReference ref{ ptr, allocator };
+                const_applyable_ref ref{ ptr, allocator };
                 fn(ref);
             }
         });
@@ -404,7 +427,7 @@ class AtomicTrie
 
                 auto* ptr = &allocator.get_object(range.work_list[i] >> 32);
 
-                ApplyableNodeReference ref{ ptr, allocator };
+                applyable_ref ref{ ptr, allocator };
                 fn(ref);
             }
         });

@@ -157,6 +157,16 @@ struct EphemeralTrieApplyRange
                     splittable = false;
                     return;
                 }
+                /**
+                 * If a node is split, 
+                 * we want to ensure that all of its children prefixes,
+                 * truncated to max_split_len, form disjoint subsets of the keyspace.
+                 * But this must hold: for each child, the current node's prefix, plus branch_bits,
+                 * necessarily forms a subset disjoint from the corresponding subsets of each other child.
+                 * The edge case is when prefix_len == max_split_len; in this case,
+                 * truncation to max_split_len drops the branch bits.
+                 * This is handled by the >= (instead of >) in the above check.
+                 **/
    
                 other.work_list = allocator.get_object(other.work_list.at(0) >> 32)
                                       .children_and_sizes_list();
