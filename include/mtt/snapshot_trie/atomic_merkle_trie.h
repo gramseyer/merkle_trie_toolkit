@@ -244,10 +244,12 @@ class AtomicMerkleTrieNode
         hash_valid.store(false, std::memory_order_release);
     }
 
-    PrefixLenBits get_prefix_match_len(const prefix_t& other_key,
+    template<TriePrefix query_prefix_t>
+    PrefixLenBits get_prefix_match_len(const query_prefix_t& other_key,
                                        const PrefixLenBits other_len
                                        = MAX_KEY_LEN_BITS) const
     {
+        static_assert(query_prefix_t::len() >= prefix_t::len(), "query too short");
         return prefix.get_prefix_match_len(prefix_len, other_key, other_len);
     }
 
@@ -279,7 +281,8 @@ class AtomicMerkleTrieNode
     void invalidate_hash_to_node(const node_t* target);
     void invalidate_hash_to_key(const prefix_t& query);
 
-    node_t* get_or_make_subnode_ref(const prefix_t& query_prefix,
+    template<TriePrefix query_prefix_t>
+    node_t* get_or_make_subnode_ref(const query_prefix_t& query_prefix,
                                     const PrefixLenBits query_len,
                                     AMT_gc_t auto& gc);
 
@@ -349,11 +352,13 @@ class AtomicMerkleTrie
     gc_t gc;
 
   public:
-    node_t* get_subnode_ref_and_invalidate_hash(const prefix_t& query_prefix,
+    template<TriePrefix query_prefix_t>
+    node_t* get_subnode_ref_and_invalidate_hash(const query_prefix_t& query_prefix,
                                                 const PrefixLenBits query_len)
     {
+        static_assert(query_prefix_t::len() >= prefix_t::len(), "can't query for shorter prefix");
         auto* out = root->template get_or_make_subnode_ref(
-            query_prefix, query_len, gc);
+            query_prefix, std::min(prefix_t::len(), query_len), gc);
         root->invalidate_hash_to_node(out);
         return out;
     }
@@ -572,11 +577,13 @@ AMTN_DECL ::extract_singlechild()
 }
 
 AMTN_TEMPLATE
+template<TriePrefix query_prefix_t>
 AMTN_DECL*
-AMTN_DECL ::get_or_make_subnode_ref(const prefix_t& query_prefix,
+AMTN_DECL ::get_or_make_subnode_ref(const query_prefix_t& query_prefix,
                                     const PrefixLenBits query_len,
                                     AMT_gc_t auto& gc)
 {
+    static_assert(query_prefix_t::len() >= prefix_t::len(), "query too short");
     //	std::printf("get_or_make_subnode_ref: prefix %s query %s\n",
     //		prefix.to_string(prefix_len).c_str(),
     //		query_prefix.to_string(query_len).c_str());
@@ -584,6 +591,7 @@ AMTN_DECL ::get_or_make_subnode_ref(const prefix_t& query_prefix,
     auto matchlen = get_prefix_match_len(query_prefix, query_len);
 
     trie_assert(matchlen >= prefix_len, "invalid get_or_make_subnode_ref");
+    trie_assert(query_len <= prefix_t::len(), "query len too long?");
 
     if (query_len == prefix_len) {
         return this;
@@ -596,11 +604,12 @@ AMTN_DECL ::get_or_make_subnode_ref(const prefix_t& query_prefix,
     while (true) {
         if (ptr == nullptr) {
             node_t* new_child = nullptr;
+            prefix_t new_prefix(query_prefix);
             if (query_len == MAX_KEY_LEN_BITS) {
-                new_child = new node_t(query_prefix, value_nullopt_t{});
+                new_child = new node_t(new_prefix, value_nullopt_t{});
                                       // InsertFn::new_value(query_prefix));
             } else {
-                new_child = new node_t(map_node_args_t{query_prefix, query_len});
+                new_child = new node_t(map_node_args_t{new_prefix, query_len});
             }
             if (try_add_child(bb, ptr, new_child)) {
                 new_child->commit_ownership();

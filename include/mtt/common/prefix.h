@@ -48,11 +48,11 @@ struct PrefixLenBits {
 		return len / 8;
 	}
 
-	std::strong_ordering operator<=>(const PrefixLenBits& other) const {
+	constexpr std::strong_ordering operator<=>(const PrefixLenBits& other) const {
 		return len <=> other.len;
 	}
 
-	bool operator==(const PrefixLenBits& other) const = default;
+	constexpr bool operator==(const PrefixLenBits& other) const = default;
 
 	constexpr PrefixLenBits operator+(const uint16_t other_bits) const {
 		return PrefixLenBits { static_cast<uint16_t>(len + other_bits) };
@@ -138,6 +138,9 @@ class ByteArrayPrefix {
 	constexpr static uint64_t BRANCH_MASK 
 		= (static_cast<uint64_t>(1) << (BRANCH_BITS)) - 1;
 
+	template<uint16_t len, uint8_t b>
+	friend class ByteArrayPrefix;
+
 public:
 
 	ByteArrayPrefix()
@@ -156,6 +159,17 @@ public:
 			std::memcpy(ptr, input.data(), MAX_LEN_BYTES);
 	}
 
+	template<uint16_t other_len>
+	ByteArrayPrefix(const ByteArrayPrefix<other_len>& other)
+		: data()
+		{
+			static_assert(other_len >= MAX_LEN_BYTES, "other too short");
+			std::memcpy(
+				reinterpret_cast<uint8_t*>(data.data()),
+				reinterpret_cast<const uint8_t*>(other.data.data()),
+				MAX_LEN_BYTES);
+		}
+
 	ByteArrayPrefix(const uint8_t* ptr, slice_ctor_t)
 		: data()
 	{
@@ -167,10 +181,13 @@ public:
 
 	//! Returns the number of bits that match between this and \a other,
 	//! rounded down to the nearest multiple of BRANCH_BITS.
+	template<uint16_t OTHER_MAX_LEN_BYTES> 
 	PrefixLenBits get_prefix_match_len(
 		const PrefixLenBits& self_len, 
-		const ByteArrayPrefix& other, 
-		const PrefixLenBits& other_len) const {
+		const ByteArrayPrefix<OTHER_MAX_LEN_BYTES>& other, 
+		const PrefixLenBits& other_len) const
+	{
+		static_assert(MAX_LEN_BYTES <= OTHER_MAX_LEN_BYTES, "other too short");
 
 		// length in bits
 		size_t res = MAX_LEN_BYTES * 8;
