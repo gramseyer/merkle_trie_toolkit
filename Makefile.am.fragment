@@ -15,3 +15,4 @@ mtt_TEST_CCS = \
 	%reldir%/tests/test_layered_trie.cc \
 	%reldir%/tests/test_memcache_trie.cc
 
+$(mtt_TEST_CCS:.cc=.o) : CXXFLAGS += $(mtt_TEST_CFLAGS)
