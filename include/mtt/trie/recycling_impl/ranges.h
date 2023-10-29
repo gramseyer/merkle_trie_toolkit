@@ -13,6 +13,7 @@ TBB helper objects used for iterating over tries
 
 #include <tbb/blocked_range.h> // for tbb::split
 
+#include <type_traits>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -104,19 +105,29 @@ struct RecyclingAccumulateValuesRange
 template<typename TrieT, unsigned int GRAIN_SIZE = 1000>
 struct RecyclingApplyRange
 {
-    using allocator_t = typename TrieT::allocator_t;
+private:
+    using ca_t = const TrieT::allocator_t;
+    using a_t = TrieT::allocator_t;
+public:
 
-    std::vector<const TrieT*> work_list;
+    using allocator_t = std::conditional<
+        std::is_const<TrieT>::value,
+        ca_t,
+        a_t>::type;
+
+    //using allocator_t = typename TrieT::allocator_t;
+
+    std::vector<TrieT*> work_list;
 
     uint64_t work_size;
 
-    const allocator_t& allocator;
+    allocator_t& allocator;
 
     bool empty() const { return work_size == 0; }
 
     bool is_divisible() const { return work_size > GRAIN_SIZE; }
 
-    RecyclingApplyRange(const TrieT* work_root, const allocator_t& allocator)
+    RecyclingApplyRange(TrieT* work_root, allocator_t& allocator)
         : work_list()
         , work_size(0)
         , allocator(allocator)

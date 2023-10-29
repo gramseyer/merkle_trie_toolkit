@@ -462,8 +462,11 @@ class alignas(64) RecyclingTrieNode : private utils::NonMovableOrCopyable
     }
 
     template<typename ApplyFn>
-    void apply_to_keys(ApplyFn& fn, const allocator_t& allocator) const
+    void apply_to_keys(ApplyFn& fn, PrefixLenBits max_len, const allocator_t& allocator) const
     {
+        if (max_len != MAX_KEY_LEN_BITS) {
+            throw std::runtime_error("unimplemented");
+        }
         if (prefix_len == MAX_KEY_LEN_BITS) {
             fn(prefix.uint64());
             return;
@@ -471,7 +474,7 @@ class alignas(64) RecyclingTrieNode : private utils::NonMovableOrCopyable
 
         for (auto iter = children.begin(); iter != children.end(); iter++) {
             auto& child = allocator.get_object((*iter).second);
-            child.apply_to_keys(fn, allocator);
+            child.apply_to_keys(fn, max_len, allocator);
         }
     }
 
@@ -796,13 +799,13 @@ class RecyclingTrie
         tl_cache.clear();
     }
 
-    template<typename ValueModifyFn>
+    template<typename ValueModifyFn, uint32_t GRAIN_SIZE>
     void parallel_apply(ValueModifyFn const& fn)
     {
-        auto apply_lambda = [&fn](ApplyableNodeReference<node_t>& work_root) {
+        auto apply_lambda = [&fn](ApplyableNodeReference<typename node_t::allocator_t>& work_root) {
             work_root.apply(fn);
         };
-        parallel_batch_value_modify(apply_lambda);
+        parallel_batch_value_modify<decltype(apply_lambda), GRAIN_SIZE>(apply_lambda);
     }
 
     template<typename ValueModifyFn, uint32_t GRAIN_SIZE>
@@ -815,12 +818,12 @@ class RecyclingTrie
             return;
         }
 
-        RecyclingApplyRange<node_t, GRAIN_SIZE> range(root, allocator);
+        RecyclingApplyRange<node_t, GRAIN_SIZE> range(&allocator.get_object(root), allocator);
         // guaranteed that range.work_list contains no overlaps
 
         tbb::parallel_for(range, [&fn, this](const auto& range) {
             for (unsigned int i = 0; i < range.work_list.size(); i++) {
-                ApplyableNodeReference ref{ range.work_list[i], allocator };
+                ApplyableNodeReference<allocator_t> ref{ range.work_list[i], allocator };
                 fn(ref);
             }
         });
@@ -835,7 +838,7 @@ class RecyclingTrie
             return;
         }
 
-        RecyclingApplyRange<node_t, GRAIN_SIZE> range(root, allocator);
+        RecyclingApplyRange<const node_t, GRAIN_SIZE> range(&allocator.get_object(root), allocator);
         // guaranteed that range.work_list contains no overlaps
 
         tbb::parallel_for(range, [&fn, this](const auto& range) {
