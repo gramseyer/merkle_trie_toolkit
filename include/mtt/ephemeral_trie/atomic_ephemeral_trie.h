@@ -68,7 +68,7 @@ class AtomicChildrenMap : private utils::NonMovableOrCopyable
     {
         std::printf("self: %p\n", this);
         for (uint8_t i = 0; i < 16; i++) {
-            std::printf("    %u %llx\n",
+            std::printf("    %u %" PRIx64 "\n",
                         i,
                         children[i].load(std::memory_order_acquire));
         }
