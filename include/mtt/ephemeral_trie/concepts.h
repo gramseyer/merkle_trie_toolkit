@@ -1,3 +1,5 @@
+#pragma once
+
 #include <concepts>
 #include <cstdint>
 #include <vector>
@@ -13,6 +15,9 @@ struct EphemeralTrieMetadataBase
     void
     write_to(std::vector<uint8_t>& digest_bytes) const
     {
+        if (!hash_valid) {
+            throw std::runtime_error("invalid metadata write");
+        }
         digest_bytes.insert(digest_bytes.end(),
             hash.begin(), hash.end());
     }
