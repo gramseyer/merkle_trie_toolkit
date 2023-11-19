@@ -320,6 +320,25 @@ class alignas(64) AtomicTrieNode : private utils::NonMovableOrCopyable
         }
         return total_size;
     }
+
+    metadata_t get_metadata(const prefix_t& query_prefix, PrefixLenBits query_len, allocator_t const& allocator) const
+    {
+        if (prefix_len > query_len)
+        {
+            throw std::runtime_error("invalid query");
+        }
+        if (prefix_len == query_len)
+        {
+            if (!metadata.hash_valid) {
+                throw std::runtime_error("invalid metadata access");
+            }
+            return metadata;
+        }
+
+        auto bb = query_prefix.get_branch_bits(prefix_len);
+
+        return allocator.get_object(children.get(bb) >> 32).get_metadata(query_prefix, query_len, allocator);
+    }
 };
 
 template<typename ValueType, typename PrefixT, EphemeralTrieMetadata metadata_t = EphemeralTrieMetadataBase, uint8_t LOG_BUFSIZE = 19>
@@ -479,6 +498,10 @@ class AtomicTrie
 
     const_applyable_ref get_applyable_ref() const {
         return const_applyable_ref { &root, allocator };
+    }
+
+    metadata_t get_metadata(const prefix_t& query_prefix, PrefixLenBits prefix_len) const {
+        return root.get_metadata(query_prefix, prefix_len, allocator);
     }
 };
 
@@ -733,7 +756,6 @@ ATN_DECL :: compute_hash(allocator_t& allocator, std::vector<uint8_t>& digest_bu
 
     if (prefix_len == MAX_KEY_LEN_BITS)
     {
-
         digest_buffer.clear();
         write_node_header(digest_buffer, prefix, prefix_len);
         
