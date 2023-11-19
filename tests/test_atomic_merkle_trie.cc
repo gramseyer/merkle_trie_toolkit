@@ -10,6 +10,9 @@
 #include "mtt/trie/types.h"
 #include "mtt/trie/utils.h"
 
+#include "mtt/memcached_snapshot_trie/memcache_trie.h"
+#include "mtt/memcached_snapshot_trie/null_interface.h"
+
 #include <utils/serialize_endian.h>
 #include <utils/threadlocal_cache.h>
 #include <utils/time.h>
@@ -405,6 +408,29 @@ namespace detail {
     struct invalidateable_logical_value {
         bool valid;
         uint64_t uid;
+
+        void copy_data(std::vector<uint8_t>& buf) const
+        {
+            if (!valid) {
+                throw std::runtime_error("should not write here");
+            }
+            utils::write_unsigned_little_endian(buf, uid);
+        }
+
+        invalidateable_logical_value(trie::DurableValueSlice const& slice)
+            : valid(true)
+            , uid(0)
+        {
+            if (slice.len != 8) {
+                throw std::runtime_error("invalid slice");
+            }
+            uid = *reinterpret_cast<const uint64_t*>(slice.ptr);
+        }
+
+        invalidateable_logical_value(bool valid, uint64_t uid)
+            : valid(valid)
+            , uid(uid)
+            {}
     };
 
     static bool validation_lambda(const invalidateable_logical_value& v)
@@ -414,7 +440,7 @@ namespace detail {
 
     static void lv_serialize(std::vector<uint8_t>& buf, const invalidateable_logical_value& v)
     {
-        return utils::write_unsigned_little_endian(buf, v.uid);
+        utils::write_unsigned_little_endian(buf, v.uid);
     }
 
     void
@@ -438,10 +464,10 @@ TEST_CASE("no logical value", "[amt]")
     auto h = m.hash_and_normalize();
 
     auto make_lv = [](bool valid, uint64_t id) {
-        return detail::invalidateable_logical_value {
-            .valid = valid,
-            .uid = id
-        };
+        return detail::invalidateable_logical_value (valid, id);
+       //     .valid = valid,
+       //     .uid = id
+       // };
     };
 
     SECTION("only empty values")
@@ -490,6 +516,76 @@ TEST_CASE("no logical value", "[amt]")
 
         REQUIRE(m.hash_and_normalize() == m3.hash_and_normalize());
         REQUIRE(m2.hash_and_normalize() != m3.hash_and_normalize());
+    }
+}
+
+
+/* Copy of AMT test case for memcache trie */
+TEST_CASE("no logical value memcache", "[memcache]")
+{
+    using value_t = detail::invalidateable_logical_value;
+
+    using metadata_t = SnapshotTrieMetadataBase;
+    using prefix_t = UInt64Prefix;
+
+    using mt
+        = MemcacheTrie<prefix_t, value_t, 256, NullInterface<8>, metadata_t, &detail::validation_lambda>;
+
+    mt m(0);
+
+    auto h = m.hash_and_normalize(0);
+
+    auto make_lv = [](bool valid, uint64_t id) {
+        return detail::invalidateable_logical_value (valid, id);
+    };
+
+    SECTION("only empty values")
+    {
+        auto root = m.get_root_and_invalidate_hash(0);
+
+        root -> template insert<&detail::no_merge_fn>(UInt64Prefix(0x0000'0000'0000'0001), m.get_gc(), 0, m.get_storage(), make_lv(false, 0));
+        root -> template insert<&detail::no_merge_fn>(UInt64Prefix(0x0000'0000'0000'0002), m.get_gc(), 0, m.get_storage(), make_lv(false, 1));
+        root -> template insert<&detail::no_merge_fn>(UInt64Prefix(0x0000'0000'0000'0010), m.get_gc(), 0, m.get_storage(), make_lv(false, 2));
+        root -> template insert<&detail::no_merge_fn>(UInt64Prefix(0x0000'0000'0000'0100), m.get_gc(), 0, m.get_storage(), make_lv(false, 3));
+        root -> template insert<&detail::no_merge_fn>(UInt64Prefix(0x0000'0000'0000'1000), m.get_gc(), 0, m.get_storage(), make_lv(false, 4));
+
+        REQUIRE(m.hash_and_normalize(0) == h);
+
+        //nodes should not even exist in the tree
+        root -> template insert<&detail::no_merge_fn>(UInt64Prefix(0x0000'0000'0000'0001), m.get_gc(), 0, m.get_storage(), make_lv(false, 0));
+    }
+
+    SECTION("some values")
+    {
+        auto root = m.get_root_and_invalidate_hash(0);
+
+        mt m2(0), m3(0);
+
+        auto root2 = m2.get_root_and_invalidate_hash(0);
+        auto root3 = m3.get_root_and_invalidate_hash(0);
+
+        root -> template insert<&detail::no_merge_fn>(UInt64Prefix(0x0000'0000'0000'0001), m.get_gc(), 0, m.get_storage(), make_lv(true, 0));
+        root2 -> template insert<&detail::no_merge_fn>(UInt64Prefix(0x0000'0000'0000'0001), m2.get_gc(), 0, m.get_storage(), make_lv(true, 0));
+
+        root -> template insert<&detail::no_merge_fn>(UInt64Prefix(0x0000'0000'0000'0002), m.get_gc(), 0, m.get_storage(), make_lv(false, 1));
+        root -> template insert<&detail::no_merge_fn>(UInt64Prefix(0x0000'0000'0000'0010), m.get_gc(), 0, m.get_storage(), make_lv(false, 2));
+        root -> template insert<&detail::no_merge_fn>(UInt64Prefix(0x0000'0000'0000'0100), m.get_gc(), 0, m.get_storage(), make_lv(false, 3));
+
+        root -> template insert<&detail::no_merge_fn>(UInt64Prefix(0x0000'0000'0000'1000), m.get_gc(), 0, m.get_storage(), make_lv(true, 4));
+        root2 -> template insert<&detail::no_merge_fn>(UInt64Prefix(0x0000'0000'0000'1000), m2.get_gc(), 0, m2.get_storage(), make_lv(true, 4));
+        root3 -> template insert<&detail::no_merge_fn>(UInt64Prefix(0x0000'0000'0000'1000), m3.get_gc(), 0, m3.get_storage(), make_lv(true, 4));
+
+        REQUIRE(m.hash_and_normalize(0) == m2.hash_and_normalize(0));
+
+        auto* n1 = m.get_subnode_ref_and_invalidate_hash(UInt64Prefix(0x0000'0000'0000'0001),
+                                              PrefixLenBits(64), 0);
+
+        auto* v = n1->get_value(UInt64Prefix(0x0000'0000'0000'0001), m.get_storage());
+        v -> valid = false;
+
+        REQUIRE(m.hash_and_normalize(0) == m3.hash_and_normalize(0));
+
+        REQUIRE(m2.hash_and_normalize(0) != m3.hash_and_normalize(0));
     }
 }
 

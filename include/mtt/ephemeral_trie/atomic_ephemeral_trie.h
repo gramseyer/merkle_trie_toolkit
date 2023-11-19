@@ -75,7 +75,7 @@ class AtomicChildrenMap : private utils::NonMovableOrCopyable
     }
 };
 
-template<typename ValueType, typename PrefixT, uint8_t LOG_BUFSIZE, EphemeralTrieMetadata metadata_t>
+template<typename ValueType, typename PrefixT, EphemeralTrieMetadata metadata_t, uint8_t LOG_BUFSIZE>
 class AtomicTrie;
 
 template<typename ValueType, typename PrefixT, uint8_t LOG_BUFSIZE, EphemeralTrieMetadata metadata_t>
@@ -322,7 +322,7 @@ class alignas(64) AtomicTrieNode : private utils::NonMovableOrCopyable
     }
 };
 
-template<typename ValueType, typename PrefixT, uint8_t LOG_BUFSIZE = 19, EphemeralTrieMetadata metadata_t = EphemeralTrieMetadataBase>
+template<typename ValueType, typename PrefixT, EphemeralTrieMetadata metadata_t = EphemeralTrieMetadataBase, uint8_t LOG_BUFSIZE = 19>
 class AtomicTrie
 {
   public:

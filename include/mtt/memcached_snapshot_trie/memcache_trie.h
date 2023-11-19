@@ -19,27 +19,31 @@
 
 #include "mtt/snapshot_trie/concepts.h"
 
+#include "mtt/snapshot_trie/optional_value.h"
+
 #include "mtt/memcached_snapshot_trie/durable_interface.h"
 
 #include <sodium.h>
 
 #include <utils/assert.h>
+#include <utils/debug_utils.h>
 
 namespace trie {
 
-template<typename _prefix_t, typename value_t, SnapshotTrieMetadata _metadata_t>
+template<typename _prefix_t, typename opt_value_t, SnapshotTrieMetadata _metadata_t>
 class MemcacheTrieNode
 {
   public:
     using prefix_t = _prefix_t;
     using metadata_t = _metadata_t;
-    using node_t = MemcacheTrieNode<prefix_t, value_t, metadata_t>;
+    using node_t = MemcacheTrieNode<prefix_t, opt_value_t, metadata_t>;
+    using value_t = opt_value_t::value_type;
 
   private:
     static_assert(std::atomic<node_t*>::is_always_lock_free,
                   "ptr should be lockfree");
 
-    using variant_value_t = std::optional<value_t>;
+    using variant_value_t = opt_value_t;//std::optional<value_t>;
     using variant_children_t = std::array<std::atomic<node_t*>, 16>;
     using variant_storage_ptr_t = TimestampPointerPair;
 
@@ -335,6 +339,17 @@ class MemcacheTrieNode
         return metadata;
     }
 
+    void write_metadata_and_hash_to(std::vector<uint8_t>& digest_bytes) const {
+        trie_assert(metadata_valid.load(std::memory_order_acquire),
+                    "invalid metadata acquired");
+       
+        metadata.write_to(digest_bytes);
+        digest_bytes.insert(
+            digest_bytes.end(),
+            hash.begin(),
+            hash.end());
+    }
+
     const Hash& get_hash() const {
         trie_assert(metadata_valid.load(std::memory_order_acquire),
                     "invalid hash acquired");
@@ -347,18 +362,21 @@ class MemcacheTrieNode
                       DurableInterface auto& storage);
 
     value_t* get_value(const prefix_t& query_prefix,
-                       DurableInterface auto& storage);
+                       DurableInterface auto const& storage);
 
     void log_self_active(DurableInterface auto& interface);
     void log_self_deleted(DurableInterface auto& interface);
 
     void log(std::string pref) const
     {
-        std::printf("%s %p %s\n",
+        std::printf("%s %p %s (%u)\n",
                     pref.c_str(),
                     this,
-                    prefix.to_string(prefix_len).c_str());
+                    prefix.to_string(prefix_len).c_str(),
+                    prefix_len);
         if (is_leaf()) {
+            auto& value = std::get<variant_value_t>(body);
+            std::printf("%s value opt %u logical %u\n", pref.c_str(), value.has_opt_value(), value.has_logical_value());
             return;
         }
 
@@ -370,7 +388,7 @@ class MemcacheTrieNode
             auto const* ptr = get_child(bb);
             if (ptr != nullptr) {
                 std::printf("  %s child %p %u\n", pref.c_str(), ptr, bb);
-                ptr->log(std::string("  ") + pref);
+                ptr->log(pref + std::string("  "));
             }
         }
     }
@@ -380,10 +398,11 @@ template<typename prefix_t,
          typename value_t,
          uint32_t TLCACHE_SIZE,
          DurableInterface storage_t,
-         SnapshotTrieMetadata metadata_t = SnapshotTrieMetadataBase>
+         SnapshotTrieMetadata metadata_t = SnapshotTrieMetadataBase,
+         auto has_value_f = detail::default_value_selector<value_t>>
 class MemcacheTrie
 {
-    using node_t = MemcacheTrieNode<prefix_t, value_t, metadata_t>;
+    using node_t = MemcacheTrieNode<prefix_t, OptionalValue<value_t, has_value_f>, metadata_t>;
     using gc_t = DeferredGC<node_t, TLCACHE_SIZE>;
 
     node_t* root;
@@ -399,6 +418,12 @@ class MemcacheTrie
     {
         return root->template get_or_make_subnode_ref(
             query_prefix, query_len, current_timestamp);
+    }
+
+    node_t* get_root_and_invalidate_hash(uint32_t current_timestamp)
+    {
+        root->invalidate_hash_to_node(root, current_timestamp);
+        return root;
     }
 
     gc_t& get_gc() { return gc; }
@@ -431,18 +456,28 @@ class MemcacheTrie
     {
         return root->get_value(query, storage);
     }
+
+    const value_t* get_value(prefix_t const& query) const
+    {
+        return root->get_value(query, storage);
+    }
+
+    void log(std::string pref) const
+    {
+        root -> log(pref);
+    }
 };
 
 #define MCTN_TEMPLATE                                                          \
     template<typename _prefix_t,                                               \
-             typename value_t,                                                 \
+             typename opt_value_t,                                             \
              SnapshotTrieMetadata _metadata_t>
-#define MCTN_DECL MemcacheTrieNode<_prefix_t, value_t, _metadata_t>
+#define MCTN_DECL MemcacheTrieNode<_prefix_t, opt_value_t, _metadata_t>
 
 template<typename node_t>
 static node_t*
 load_evicted_ptr(TimestampPointerPair const& storage_ptr,
-                 DurableInterface auto& storage)
+                 DurableInterface auto const& storage)
 {
     auto result = storage.restore_durable_value(storage_ptr);
 
@@ -545,7 +580,7 @@ MCTN_DECL::insert(prefix_t const& new_prefix,
 
     if (is_leaf()) {
         auto& value = std::get<variant_value_t>(body);
-        if (value.has_value()) {
+        if (value.has_opt_value()) {
             value_merge_fn(*value, args...);
         } else {
             value.emplace(args...);
@@ -666,7 +701,7 @@ MCTN_DECL ::get_num_children() const
 {
     if (is_leaf()) {
         auto const& value = std::get<variant_value_t>(body);
-        if (value.has_value()) {
+        if (value.has_logical_value()) {
             return UINT8_MAX;
         }
         return 0;
@@ -783,7 +818,7 @@ MCTN_DECL ::compute_hash_and_normalize(deferred_gc_t auto& gc,
 
     if (is_leaf()) {
         auto const& value = std::get<variant_value_t>(body);
-        if (!value.has_value()) {
+        if (!value.has_logical_value()) {
             metadata.size = 0;
             metadata_valid = true;
             return metadata;
@@ -847,7 +882,14 @@ MCTN_DECL ::compute_hash_and_normalize(deferred_gc_t auto& gc,
             num_children++;
         }
 
-        if (child->get_last_modified_ts() <= timestamp_evict_threshold) {
+        /** 
+         * Should be a less than, not leq
+         * Some instantiation might start with timestamp 0,
+         * and leq would make it easy to have 
+         * accidental error.
+         * 0 should mean "never evict"
+         */
+        if (child->get_last_modified_ts() < timestamp_evict_threshold) {
             node_t* new_child = child->evict_self();
             trie_assert(new_child != nullptr, "invalid eviction");
             gc.free(child); // has to be before try_add_child modifies 'child' variable
@@ -874,8 +916,7 @@ MCTN_DECL ::compute_hash_and_normalize(deferred_gc_t auto& gc,
         if (ptr == nullptr)
             continue;
 
-        auto const& m = ptr->get_metadata();
-        m.write_to(digest_bytes);
+        ptr -> write_metadata_and_hash_to(digest_bytes);
     }
 
     if (crypto_generichash(hash.data(),
@@ -940,15 +981,15 @@ MCTN_DECL ::delete_value(const prefix_t& delete_prefix,
 }
 
 MCTN_TEMPLATE
-value_t*
+MCTN_DECL::value_t*
 MCTN_DECL::get_value(const prefix_t& query_prefix,
-                     DurableInterface auto& storage)
+                     DurableInterface auto const& storage)
 {
     trie_assert(!is_evicted(), "cannot get_value from evicted node");
 
     if (is_leaf()) {
         auto& v = std::get<variant_value_t>(body);
-        if (query_prefix == prefix && v.has_value()) {
+        if (query_prefix == prefix && v.has_logical_value()) {
             return &(*v);
         }
         return nullptr;
@@ -993,7 +1034,7 @@ MCTN_DECL::log_self_active(DurableInterface auto& interface)
     trie_assert(metadata_valid, "cannot commit self before hash");
     trie_assert(!is_evicted(), "cannot log active something already evicted");
 
-    if (is_leaf() && std::get<variant_value_t>(body).has_value()) {
+    if (is_leaf() && std::get<variant_value_t>(body).has_logical_value()) {
         // if not has_value, self is not active, so node will be deleted in a
         // hash and normalize operation we don't delete here, assumign the
         // normalize takes care of that as well.
@@ -1008,6 +1049,10 @@ MCTN_DECL::log_self_active(DurableInterface auto& interface)
         interface.log_durable_value(get_ts_ptr(), v);
         update_previous_ts_ptr();
         return;
+    } 
+    else if (is_leaf() && !std::get<variant_value_t>(body).has_logical_value())
+    {
+        throw std::runtime_error("should not log as active a deleted value");
     }
 
     DurableMapNode<metadata_t> m;
@@ -1060,7 +1105,7 @@ MCTN_DECL::evict_self() const
     trie_assert(!is_evicted(), "double eviction");
 
     if (is_leaf()) {
-        trie_assert(std::get<variant_value_t>(body).has_value(),
+        trie_assert(std::get<variant_value_t>(body).has_logical_value(),
                     "cannot evict deleted object");
     }
 

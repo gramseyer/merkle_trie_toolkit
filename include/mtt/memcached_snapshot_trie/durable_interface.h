@@ -281,7 +281,7 @@ concept DurableInterface = requires(T t,
 {
     t.log_durable_value(k, v);
 }
-&&requires(T t, TimestampPointerPair const& k)
+&&requires(const T t, TimestampPointerPair const& k)
 {
     // credit to https://stackoverflow.com/a/66275373
     []<typename BackingType>(DurableResult<T::KEY_LEN_BYTES, BackingType>) {

@@ -24,7 +24,7 @@ class InMemoryInterface
     std::map<TimestampPointerPair, std::vector<uint8_t>> values;
 
     uint32_t stores = 0;
-    uint32_t loads = 0;
+    mutable uint32_t loads = 0;
 
   public:
     constexpr static uint8_t KEY_LEN_BYTES = _KEY_LEN_BYTES;
@@ -47,7 +47,7 @@ class InMemoryInterface
         stores++;
     }
 
-    result_t restore_durable_value(TimestampPointerPair const& key)
+    result_t restore_durable_value(TimestampPointerPair const& key) const
     {
         result_t out;
 
