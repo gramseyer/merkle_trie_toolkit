@@ -390,6 +390,10 @@ public:
 		set_byte(byte_index, next_byte);
 	}
 
+	const uint8_t* underlying_data_ptr() const
+	{
+		return reinterpret_cast<const uint8_t*>(data.data());
+	}
 	uint8_t* underlying_data_ptr() {
 		return reinterpret_cast<uint8_t*>(data.data());
 	}
