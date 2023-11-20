@@ -161,7 +161,11 @@ class alignas(64) AtomicTrieNode : private utils::NonMovableOrCopyable
         prefix = key;
         prefix_len = len;
 
-        prefix.truncate(prefix_len);
+        // TODO, strange bug -- having this as prefix_len, instead of len,
+        // somehow optimizes to inputting the value of prefix_len before
+        // the prefix_len = len call. (in prior commit e527d13ae356b40025742f7eac7eb90eb46d52f5
+        // of groundhog, using ./blockstm_comparison with short_stuff=true
+        prefix.truncate(len);
 
         children.set_unique_child(single_child_branch_bits,
                                   single_child_pointer);
