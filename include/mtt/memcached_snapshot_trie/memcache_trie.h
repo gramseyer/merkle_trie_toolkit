@@ -362,7 +362,8 @@ class MemcacheTrieNode
                       DurableInterface auto& storage);
 
     value_t* get_value(const prefix_t& query_prefix,
-                       DurableInterface auto const& storage);
+                       DurableInterface auto const& storage,
+                       bool allow_only_opt_value);
 
     void log_self_active(DurableInterface auto& interface);
     void log_self_deleted(DurableInterface auto& interface);
@@ -452,14 +453,14 @@ class MemcacheTrie
         return root->get_hash();
     }
 
-    value_t* get_value(prefix_t const& query)
+    value_t* get_value(prefix_t const& query, bool allow_only_opt_value = false)
     {
-        return root->get_value(query, storage);
+        return root->get_value(query, storage, allow_only_opt_value);
     }
 
-    const value_t* get_value(prefix_t const& query) const
+    const value_t* get_value(prefix_t const& query, bool allow_only_opt_value = false) const
     {
-        return root->get_value(query, storage);
+        return root->get_value(query, storage, allow_only_opt_value);
     }
 
     void log(std::string pref) const
@@ -983,13 +984,14 @@ MCTN_DECL ::delete_value(const prefix_t& delete_prefix,
 MCTN_TEMPLATE
 MCTN_DECL::value_t*
 MCTN_DECL::get_value(const prefix_t& query_prefix,
-                     DurableInterface auto const& storage)
+                     DurableInterface auto const& storage,
+                     bool allow_only_opt_value)
 {
     trie_assert(!is_evicted(), "cannot get_value from evicted node");
 
     if (is_leaf()) {
         auto& v = std::get<variant_value_t>(body);
-        if (query_prefix == prefix && v.has_logical_value()) {
+        if (query_prefix == prefix && (v.has_logical_value() || allow_only_opt_value)) {
             return &(*v);
         }
         return nullptr;
@@ -1015,12 +1017,12 @@ MCTN_DECL::get_value(const prefix_t& query_prefix,
                 ptr->get_ptr_to_evicted_data(), storage);
 
             if (try_add_child(bb, ptr, reloaded)) {
-                return reloaded->get_value(query_prefix, storage);
+                return reloaded->get_value(query_prefix, storage, allow_only_opt_value);
             } else {
                 delete reloaded;
             }
         } else {
-            return ptr->get_value(query_prefix, storage);
+            return ptr->get_value(query_prefix, storage, allow_only_opt_value);
         }
 
         __builtin_ia32_pause();

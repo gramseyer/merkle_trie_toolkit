@@ -580,12 +580,46 @@ TEST_CASE("no logical value memcache", "[memcache]")
         auto* n1 = m.get_subnode_ref_and_invalidate_hash(UInt64Prefix(0x0000'0000'0000'0001),
                                               PrefixLenBits(64), 0);
 
-        auto* v = n1->get_value(UInt64Prefix(0x0000'0000'0000'0001), m.get_storage());
+        auto* v = n1->get_value(UInt64Prefix(0x0000'0000'0000'0001), m.get_storage(), false);
+        REQUIRE(!!v);
         v -> valid = false;
 
         REQUIRE(m.hash_and_normalize(0) == m3.hash_and_normalize(0));
 
         REQUIRE(m2.hash_and_normalize(0) != m3.hash_and_normalize(0));
+    }
+
+    SECTION("get value queries")
+    {
+        auto root = m.get_root_and_invalidate_hash(0);
+
+        root -> template insert<&detail::no_merge_fn>(UInt64Prefix(0x0000'0000'0000'0001), m.get_gc(), 0, m.get_storage(), make_lv(true, 0));
+
+        root -> template insert<&detail::no_merge_fn>(UInt64Prefix(0x0000'0000'0000'0002), m.get_gc(), 0, m.get_storage(), make_lv(false, 1));
+        root -> template insert<&detail::no_merge_fn>(UInt64Prefix(0x0000'0000'0000'0010), m.get_gc(), 0, m.get_storage(), make_lv(false, 2));
+        root -> template insert<&detail::no_merge_fn>(UInt64Prefix(0x0000'0000'0000'0100), m.get_gc(), 0, m.get_storage(), make_lv(false, 3));
+
+        root -> template insert<&detail::no_merge_fn>(UInt64Prefix(0x0000'0000'0000'1000), m.get_gc(), 0, m.get_storage(), make_lv(true, 4));
+
+
+        REQUIRE(m.get_value(UInt64Prefix(0x0000'0000'0000'0001)) != nullptr);
+        REQUIRE(m.get_value(UInt64Prefix(0x0000'0000'0000'0002)) == nullptr);
+
+
+        auto* n1 = m.get_subnode_ref_and_invalidate_hash(UInt64Prefix(0x0000'0000'0000'0001),
+                                              PrefixLenBits(64), 0);
+
+        auto* v = n1->get_value(UInt64Prefix(0x0000'0000'0000'0001), m.get_storage(), false);
+        REQUIRE(!!v);
+        v -> valid = false;
+
+        v = n1->get_value(UInt64Prefix(0x0000'0000'0000'0001), m.get_storage(), false);
+
+        REQUIRE(!v);
+
+        v = n1->get_value(UInt64Prefix(0x0000'0000'0000'0001), m.get_storage(), true);
+
+        REQUIRE(!!v);
     }
 }
 
