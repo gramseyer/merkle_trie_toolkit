@@ -91,7 +91,7 @@ TEST_CASE("default value acc ephemeraltrie", "[accumulate]")
 
 	std::vector<int32_t> res;
 
-	auto get_fn = [] (int32_t val) {
+	auto get_fn = [] (UInt64Prefix const&, int32_t val) {
 		return val;
 	};
 
@@ -135,7 +135,7 @@ TEST_CASE("default value acc ephemeraltrie large", "[accumulate]")
 
 	std::vector<int32_t> res;
 
-	auto get_fn = [] (int32_t val) {
+	auto get_fn = [] (UInt64Prefix const&, int32_t val) {
 		return val;
 	};
 

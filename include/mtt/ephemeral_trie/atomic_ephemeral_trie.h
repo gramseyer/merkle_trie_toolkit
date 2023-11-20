@@ -695,7 +695,7 @@ ATN_DECL :: accumulate_values_parallel_worker(VectorType& output,
                                             const allocator_t& allocator) const
 {
     if (prefix_len == MAX_KEY_LEN_BITS) {
-        output[vector_offset] = get_fn(allocator.get_value(value_pointer));
+        output[vector_offset] = get_fn(prefix, allocator.get_value(value_pointer));
         //AccumulatorFn::accumulate(output, vector_offset, children.value(allocator));
         //output[vector_offset] = children.value(allocator);
         return;
