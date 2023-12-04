@@ -13,6 +13,7 @@
 #include <compare>
 #include <cstddef>
 #include <cstdint>
+#include <type_traits>
 
 namespace trie {
 
@@ -65,16 +66,22 @@ struct __attribute__((packed)) TimestampPointerPair
 static_assert(offsetof(TimestampPointerPair, timestamp) == 0,
               "timestamp should come first");
 
-// This is standard-layout, and importantly,
-// we can take a slice of a list and get a valid node.
 template<typename metadata_t>
-struct __attribute__((packed)) DurableMapNode
+struct __attribute__((packed)) DurableMapNodeInternal
 {
     metadata_t metadata;
     Hash hash;
     uint16_t key_len_bits;
     uint16_t bv;
     TimestampPointerPair previous;
+};
+
+// This is standard-layout, and importantly,
+// we can take a slice of a list and get a valid node.
+template<typename metadata_t>
+struct __attribute__((packed)) DurableMapNode
+{
+    DurableMapNodeInternal<metadata_t> internal;
     TimestampPointerPair children[16];
 
     static_assert(TriviallyCopyable<metadata_t>,
@@ -172,8 +179,8 @@ class DurableValue
         reset_to_map_node();
         add_key(key);
         append_type(map_node,
-                    offsetof(DurableMapNode<metadata_t>, children)
-                        + utils::detail::BVManipFns<uint16_t>::size(map_node.bv)
+                    sizeof(DurableMapNodeInternal<metadata_t>)
+                    + utils::detail::BVManipFns<uint16_t>::size(map_node.internal.bv)
                               * sizeof(TimestampPointerPair));
     }
 

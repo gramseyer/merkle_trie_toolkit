@@ -508,14 +508,14 @@ load_evicted_ptr(TimestampPointerPair const& storage_ptr,
 
     typename node_t::map_node_args_t args{
         .prefix = prefix_t(result.get_key().ptr, slice_ctor_t{}),
-        .len = PrefixLenBits{ map_node.key_len_bits }
+        .len = PrefixLenBits{ map_node.internal.key_len_bits }
     };
 
     // map node
     auto* out
-        = new node_t(args, map_node.previous.timestamp, map_node.previous);
+        = new node_t(args, map_node.internal.previous.timestamp, map_node.internal.previous);
 
-    TrieBitVector bv(map_node.bv);
+    TrieBitVector bv(map_node.internal.bv);
 
     uint8_t counter = 0;
 
@@ -530,7 +530,7 @@ load_evicted_ptr(TimestampPointerPair const& storage_ptr,
                 return res_child.template get_value<metadata_t>().metadata;
             }
             utils::print_assert(!res_child.is_delete(), "invalid load");
-            return res_child.template get_map<metadata_t>().metadata;
+            return res_child.template get_map<metadata_t>().internal.metadata;
         };
 
          auto get_hash = [&res_child]() -> const Hash& {
@@ -538,7 +538,7 @@ load_evicted_ptr(TimestampPointerPair const& storage_ptr,
                 return res_child.template get_value<metadata_t>().hash;
             }
             utils::print_assert(!res_child.is_delete(), "invalid load");
-            return res_child.template get_map<metadata_t>().hash;
+            return res_child.template get_map<metadata_t>().internal.hash;
         };
 
         typename node_t::ptr_node_args_t ptr_args{
@@ -547,7 +547,7 @@ load_evicted_ptr(TimestampPointerPair const& storage_ptr,
             .prefix_len
             = result.is_value()
                   ? prefix_t::len()
-                  : result.template get_map<metadata_t>().key_len_bits,
+                  : result.template get_map<metadata_t>().internal.key_len_bits,
             .metadata = get_meta(),
             .hash = get_hash()
         };
@@ -1059,10 +1059,10 @@ MCTN_DECL::log_self_active(DurableInterface auto& interface)
 
     DurableMapNode<metadata_t> m;
 
-    m.metadata = metadata;
-    m.hash = hash;
-    m.key_len_bits = prefix_len.len;
-    m.previous = get_previous_ts_ptr();
+    m.internal.metadata = metadata;
+    m.internal.hash = hash;
+    m.internal.key_len_bits = prefix_len.len;
+    m.internal.previous = get_previous_ts_ptr();
     TrieBitVector bv;
     uint8_t sz = 0;
 
@@ -1075,7 +1075,7 @@ MCTN_DECL::log_self_active(DurableInterface auto& interface)
         m.children[sz] = child->get_ts_ptr();
         sz++;
     }
-    m.bv = bv.get();
+    m.internal.bv = bv.get();
 
     durable_value_t v;
     v.make_map_node(prefix, m);
