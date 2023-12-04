@@ -4,6 +4,8 @@
 #include <atomic>
 #include <cstdint>
 #include <cinttypes>
+#include <optional>
+#include <vector>
 
 #include "mtt/common/bitvector.h"
 #include "mtt/common/prefix.h"
@@ -11,6 +13,7 @@
 #include "mtt/common/debug_macros.h"
 #include "mtt/common/insert_fn.h"
 #include "mtt/common/utils.h"
+#include "mtt/common/proof.h"
 
 #include "mtt/ephemeral_trie/allocator.h"
 #include "mtt/ephemeral_trie/ranges.h"
@@ -343,6 +346,8 @@ class alignas(64) AtomicTrieNode : private utils::NonMovableOrCopyable
 
         return allocator.get_object(children.get(bb) >> 32).get_metadata(query_prefix, query_len, allocator);
     }
+
+    TrieProof<prefix_t> make_proof(prefix_t const& query_prefix, PrefixLenBits const& query_len, allocator_t const& allocator) const;
 };
 
 template<typename ValueType, typename PrefixT, EphemeralTrieMetadata metadata_t = EphemeralTrieMetadataBase, uint8_t LOG_BUFSIZE = 19>
@@ -490,6 +495,13 @@ class AtomicTrie
     {
         return root.size();
     }
+
+    TrieProof<PrefixT> make_proof(const prefix_t& query, PrefixLenBits const& query_len) const
+    {
+        return root.make_proof(query, query_len, allocator);
+    }
+
+    static bool verify_proof(TrieProof<prefix_t> const& proof, const Hash& root_hash);
 
     // TESTING
 
@@ -837,7 +849,398 @@ ATN_DECL::get_value(const prefix_t& query_prefix, allocator_t const& allocator) 
     return allocator.get_object(relevant_child).get_value(query_prefix, allocator);
 }
 
+ATN_TEMPLATE
+TrieProof<PrefixT> 
+ATN_DECL::make_proof(prefix_t const& query, PrefixLenBits const& query_len, allocator_t const& allocator) const
+{
+    auto match_len = get_prefix_match_len(query);
+
+    uint32_t ptr = UINT32_MAX;
+    if (prefix_len != MAX_KEY_LEN_BITS)
+    {
+        auto bb_self = query.get_branch_bits(prefix_len);
+        ptr = (children.get(bb_self) >> 32);
+    }
+
+    if ((match_len < prefix_len) || (match_len == prefix_len && prefix_len >= std::min(query_len, MAX_KEY_LEN_BITS)) || (ptr == UINT32_MAX))
+    {
+        std::printf("making new base proof: prefix %s\n", prefix.to_string(prefix_len).c_str());
+        TrieProof<prefix_t> p;
+        p.proved_prefix = query;
+
+        p.proof_stack.emplace_back();
+        auto& cur_layer = p.proof_stack.back();
+
+        cur_layer.len = prefix_len;
+
+        if (prefix_len == MAX_KEY_LEN_BITS)
+        {
+            cur_layer.child_data.emplace_back();
+            auto const& value = allocator.get_value(value_pointer);
+            value.copy_data(cur_layer.child_data.back());
+        } else
+        {
+            for (uint8_t bb = 0; bb < 16; bb++)
+            {
+                const uint32_t ptr = (children.get(bb) >> 32);
+
+                if (ptr != UINT32_MAX)
+                {
+                    cur_layer.child_data.emplace_back();
+                    metadata_t temp;
+                    allocator.get_object(ptr).append_metadata(cur_layer.child_data.back(), temp);
+                    cur_layer.bv.add(bb);
+                }
+            }
+        }
+        return p;
+    }
+
+    // match_len == prefix_len && query_len > prefix_len && exists active child at the right branch bits
+
+    if (prefix_len == MAX_KEY_LEN_BITS)
+    {
+        throw std::runtime_error("absurd");
+    }
+
+    auto bb_self = query.get_branch_bits(prefix_len);
+
+    auto p = allocator.get_object(ptr).make_proof(query, query_len, allocator);
+
+    p.proof_stack.emplace_back();
+    auto& cur_layer = p.proof_stack.back();
+
+    cur_layer.len = prefix_len;
+
+    std::printf("making new layer prefix %s\n", prefix.to_string(prefix_len).c_str());
+
+    for (uint8_t bb = 0; bb < 16; bb++)
+    {    
+        const uint32_t ptr_child = (children.get(bb) >> 32);
+
+        if (ptr_child != UINT32_MAX)
+        {
+            std::printf("found child for bb %u bbself %u\n", bb, bb_self);
+            cur_layer.bv.add(bb);
+            if (bb == bb_self) continue;
+
+            std::printf("creating layer for bb %u\n", bb);
+
+            cur_layer.child_data.emplace_back();
+            metadata_t temp;
+            allocator.get_object(ptr_child).append_metadata(cur_layer.child_data.back(), temp);
+
+            std::printf("child_data.size() %u\n", cur_layer.child_data.size());
+        }
+    }
+
+    return p;
+}
+
+
 #undef ATN_DECL
 #undef ATN_TEMPLATE
+
+template<typename ValueType, typename PrefixT, EphemeralTrieMetadata metadata_t, uint8_t LOG_BUFSIZE>
+bool
+AtomicTrie<ValueType, PrefixT, metadata_t, LOG_BUFSIZE>::verify_proof(const TrieProof<PrefixT>& proof, const Hash& root_hash)
+{
+    std::optional<metadata_t> carried_meta;
+    std::optional<PrefixLenBits> carried_len;
+
+    for (auto const& layer : proof.proof_stack)
+    {
+        std::printf("verifying layer with len %u\n", layer.len);
+
+        if (layer.len == prefix_t::len())
+        {
+            if (carried_meta.has_value())
+            {
+                std::printf("exit 1\n");
+                return false;
+            }
+
+            std::vector<uint8_t> digest_buffer;
+            write_node_header(digest_buffer, proof.proved_prefix, layer.len);
+
+            if (layer.child_data.size() != 1)
+            {
+                std::printf("exit 2\n");
+                return false;
+            }
+
+            if (!layer.bv.empty())
+            {
+                std::printf("exit 3\n");
+                return false;
+            }
+
+            ValueType v;
+            v.from_bytes(layer.child_data.at(0));
+
+            metadata_t m;
+            m.from_value(v);
+
+            digest_buffer.insert(
+                digest_buffer.end(),
+                layer.child_data.at(0) . begin(),
+                layer.child_data.at(0) . end());
+
+            if (crypto_generichash(m.hash.data(),
+                           m.hash.size(),
+                           digest_buffer.data(),
+                           digest_buffer.size(),
+                           NULL,
+                           0)
+                != 0) {
+                throw std::runtime_error("error from crypto_generichash");
+            }
+            m.hash_valid = true;
+
+            carried_meta = m;
+            carried_len = layer.len;
+        } 
+        else
+        {
+            if (carried_meta.has_value())
+            {
+                if (*carried_len <= layer.len)
+                {
+                    std::printf("exit 4\n");
+                    return false;
+                }
+            }
+            auto bb_self = proof.proved_prefix.get_branch_bits(layer.len);
+
+            metadata_t sum;
+
+            bool used_carried = false;
+            TrieBitVector bv = layer.bv;
+
+            size_t idx = 0;
+
+            std::vector<uint8_t> digest_buffer;
+            write_node_header(digest_buffer, proof.proved_prefix, layer.len);
+
+            bv.write(digest_buffer);
+
+            while(!bv.empty())
+            {
+                auto bb = bv.pop();
+                std::printf("pop bb=%u bb_self = %u\n", bb, bb_self);
+
+                if (bb == bb_self)
+                {
+                    if (!carried_meta.has_value())
+                    {
+                        std::printf("exit 5\n");
+                        return false;
+                    }
+                    sum += *carried_meta;
+                    carried_meta->write_to(digest_buffer);
+                    used_carried = true;
+                    continue;
+                }
+
+                metadata_t new_meta;
+
+                std::printf("idx %u child_data.size() %u\n", idx, layer.child_data.size());
+
+                if (layer.child_data.size() <= idx) {
+                    std::printf("exit 6\n");
+                    return false;
+                }
+                if (!new_meta.try_parse(layer.child_data.at(idx).data(), layer.child_data.at(idx).size()))
+                {
+                                    std::printf("exit 7\n");
+
+                    return false;
+                }
+                idx++;
+
+                sum += new_meta;
+                new_meta.write_to(digest_buffer);
+            }
+            if (carried_meta.has_value() && !used_carried)
+            {
+                                std::printf("exit 8\n");
+
+                return false;
+            }
+
+            if (crypto_generichash(sum.hash.data(),
+                        sum.hash.size(),
+                        digest_buffer.data(),
+                        digest_buffer.size(),
+                        NULL,
+                        0)
+                != 0) {
+                throw std::runtime_error("error from crypto_generichash");
+            }
+            sum.hash_valid = true;
+            carried_meta = sum;
+            carried_len = layer.len;
+        }
+    }
+
+    if (!carried_meta.has_value())
+    {
+                        std::printf("exit 9\n");
+
+        return false;
+    }
+    return carried_meta->hash == root_hash;
+}
+    /*
+    PrefixLenBits current_len = proof.proved_len;
+    if (current_len > PrefixT::len())
+    {
+        return false;
+    }
+    if (current_len < PrefixT::len() && proof.value_bytes.has_value())
+    {
+        return false;
+    }
+
+    bool do_value_check = proof.value_bytes.has_value();
+
+    size_t proof_idx = 0;
+
+    metadata_t observed_metadata;
+
+    while (true)
+    {
+        if (proof_idx == proof.proof.size())
+        {
+            if (!observed_metadata.hash_valid)
+            {
+                return false;
+            }
+            return observed_metadata.hash == root_hash;
+        }
+
+        PrefixLenBits next_len;
+        if (proof_idx + sizeof(next_len.len) > proof.proof.size())
+        {
+            return false;
+        }
+
+        utils::read_unsigned_big_endian(proof.proof.data() + proof_idx, next_len.len);
+        proof_idx += sizeof(next_len.len);
+        proof_idx += next_len.num_prefix_bytes();
+
+        if (do_value_check)
+        {
+            if (next_len != PrefixT::len())
+            {
+                return false;
+            }
+            do_value_check = false;
+
+            ValueType v;
+            v.from_bytes(*proof.value_bytes);
+
+            metadata_t m;
+            m.from_value(v);
+
+            std::vector<uint8_t> digest_buffer;
+
+            write_node_header(digest_buffer, proof.proved_prefix, next_len);
+            digest_buffer.insert(
+                digest_buffer.end(),
+                proof.value_bytes -> begin(),
+                proof.value_bytes -> end());
+
+             if (crypto_generichash(m.hash.data(),
+                           m.hash.size(),
+                           digest_buffer.data(),
+                           digest_buffer.size(),
+                           NULL,
+                           0)
+                != 0) {
+                throw std::runtime_error("error from crypto_generichash");
+            }
+            m.hash_valid = true;
+
+            observed_metadata = m;
+            current_len = next_len;
+            continue;
+        }
+
+        if (next_len >= current_len)
+        {
+            return false;
+        }
+
+        uint16_t bitmap;
+        if (proof_idx + sizeof(bitmap) > proof.proof.size())
+        {
+            return false;
+        }
+        proof_idx += sizeof(bitmap);
+
+        utils::read_unsigned_big_endian(proof.proof.data() + proof_idx, bitmap);
+
+        TrieBitVector bv(bitmap);
+
+        std::vector<uint8_t> digest_buffer;
+        write_node_header(digest_buffer, proof.proved_prefix, next_len);
+        bv.write_to(digest_buffer);
+
+        auto bb_self = proof.proved_prefix.get_branch_bits(next_len);
+
+        metadata_t sum;
+
+        bool must_consume_observed = observed_metadata.hash_valid;
+
+        while(!bv.empty())
+        {
+            auto bb = bv.pop();
+            if (bb == bb_self)
+            {
+                if (!observed_metadata.hash_valid)
+                {
+                    return false;
+                }
+                sum += observed_metadata;
+                observed_metadata.write_to(digest_buffer);
+                must_consume_observed = false;
+                continue;
+            }
+
+            metadata_t new_meta;
+            int32_t consumed_bytes = new_meta.try_parse(proof.proof.data() + proof_idx, proof.proof.size() - proof_idx);
+            if (consumed_bytes < 0) {
+                return false;
+            }
+            proof_idx += consumed_bytes;
+            if (proof_idx > proof.proof.size())
+            {
+                throw std::runtime_error("invalid parse metadata result");
+            }
+
+            sum += new_meta;
+            new_meta.write_to(digest_buffer);
+        }
+
+        if (must_consume_observed)
+        {
+            return false;
+        }
+
+        if (crypto_generichash(sum.hash.data(),
+                        sum.hash.size(),
+                        digest_buffer.data(),
+                        digest_buffer.size(),
+                        NULL,
+                        0)
+            != 0) {
+            throw std::runtime_error("error from crypto_generichash");
+        }
+        sum.hash_valid = true;
+        observed_metadata = sum;
+        current_len = next_len;
+    }
+} */
 
 } // namespace trie

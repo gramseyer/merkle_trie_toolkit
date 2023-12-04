@@ -25,6 +25,17 @@ struct EphemeralTrieMetadataBase
     template<typename T>
     void from_value(T const& value) {}
 
+    bool try_parse(const uint8_t* data, size_t len)
+    {
+        if (len != hash.size())
+        {
+            return false;
+        }
+        std::memcpy(hash.data(), data, len);
+        hash_valid = true;
+        return true;
+    }
+
     EphemeralTrieMetadataBase&
     operator+=(const EphemeralTrieMetadataBase& other)
     {

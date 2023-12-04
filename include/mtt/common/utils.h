@@ -20,6 +20,8 @@ struct EmptyValue {
 	constexpr static void copy_data(std::vector<uint8_t>& buf) {}
 
 	EmptyValue() = default;
+
+	void from_bytes(std::vector<uint8_t> const& bytes) {}
 };
 
 template<typename V, auto serialize_fn>
