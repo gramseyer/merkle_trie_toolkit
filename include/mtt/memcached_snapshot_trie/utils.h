@@ -16,6 +16,10 @@ struct EmptyDurableValue : public EmptyValue
 			throw std::runtime_error("invalid slice init");
 		}
 	}
+
+	bool has_logical_value() const {
+		return true;
+	}
 };
 
 }

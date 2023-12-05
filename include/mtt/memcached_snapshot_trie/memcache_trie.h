@@ -7,6 +7,7 @@
 #include "mtt/common/debug_macros.h"
 #include "mtt/common/insert_fn.h"
 #include "mtt/common/utils.h"
+#include "mtt/common/proof.h"
 
 #include <array>
 #include <atomic>
@@ -368,6 +369,8 @@ class MemcacheTrieNode
     void log_self_active(DurableInterface auto& interface);
     void log_self_deleted(DurableInterface auto& interface);
 
+    TrieProof<prefix_t> make_proof(prefix_t const& query, PrefixLenBits const& query_len) const;
+
     void log(std::string pref) const
     {
         std::printf("%s %p %s (%u)\n",
@@ -467,6 +470,11 @@ class MemcacheTrie
     {
         root -> log(pref);
     }
+
+    TrieProof<prefix_t> make_proof(prefix_t const& query, PrefixLenBits query_len) const {
+        return root -> make_proof(query, query_len);
+    }
+    static bool verify_proof(const TrieProof<prefix_t>& proof, const Hash& root_hash);
 };
 
 #define MCTN_TEMPLATE                                                          \
@@ -820,7 +828,8 @@ MCTN_DECL ::compute_hash_and_normalize(deferred_gc_t auto& gc,
     if (is_leaf()) {
         auto const& value = std::get<variant_value_t>(body);
         if (!value.has_logical_value()) {
-            metadata.size = 0;
+            metadata = metadata_t();
+            //metadata.size = 0;
             metadata_valid = true;
             return metadata;
         }
@@ -832,6 +841,8 @@ MCTN_DECL ::compute_hash_and_normalize(deferred_gc_t auto& gc,
 
         // sets size = 1
         metadata.from_value(*value);
+
+        std::printf("hash input at value: %s\n", utils::array_to_str(digest_bytes).c_str());
 
         if (crypto_generichash(hash.data(),
                                hash.size(),
@@ -919,6 +930,8 @@ MCTN_DECL ::compute_hash_and_normalize(deferred_gc_t auto& gc,
 
         ptr -> write_metadata_and_hash_to(digest_bytes);
     }
+
+    std::printf("hash input at map: %s\n", utils::array_to_str(digest_bytes).c_str());
 
     if (crypto_generichash(hash.data(),
                            hash.size(),
@@ -1115,7 +1128,279 @@ MCTN_DECL::evict_self() const
         ptr_node_args_t{ get_ts_ptr(), prefix, prefix_len, metadata, hash });
 }
 
+
+MCTN_TEMPLATE
+TrieProof<_prefix_t> 
+MCTN_DECL::make_proof(prefix_t const& query, PrefixLenBits const& query_len) const
+{
+    auto match_len = get_prefix_match_len(query);
+
+    trie_assert(metadata_valid, "cannot make proof before hash");
+    trie_assert(!is_evicted(), "unimplemented");
+
+    const node_t* ptr = nullptr;
+    if (prefix_len != MAX_KEY_LEN_BITS)
+    {
+        auto bb_self = query.get_branch_bits(prefix_len);
+        ptr = get_child(bb_self);
+    }
+
+    if ((match_len < prefix_len) || (match_len == prefix_len && prefix_len >= std::min(query_len, MAX_KEY_LEN_BITS)) || (ptr == nullptr))
+    {
+        std::printf("making new base proof: prefix %s\n", prefix.to_string(prefix_len).c_str());
+        TrieProof<prefix_t> p;
+        p.proved_prefix = query;
+
+        p.proof_stack.emplace_back();
+        auto& cur_layer = p.proof_stack.back();
+
+        cur_layer.len = prefix_len;
+
+        if (prefix_len == MAX_KEY_LEN_BITS)
+        {
+            auto const& v = *std::get<variant_value_t>(body);
+            trie_assert(v.has_logical_value(), "cannot make proof to invalid value");
+
+            cur_layer.child_data.emplace_back();
+            v.copy_data(cur_layer.child_data.back());
+        } else
+        {
+            for (uint8_t bb = 0; bb < 16; bb++)
+            {
+                const auto* ptr = get_child(bb);
+
+                if (ptr != nullptr)
+                {
+                    cur_layer.child_data.emplace_back();
+                    ptr -> write_metadata_and_hash_to(cur_layer.child_data.back());
+                    cur_layer.bv.add(bb);
+                }
+            }
+        }
+        return p;
+    }
+
+    // match_len == prefix_len && query_len > prefix_len && exists active child at the right branch bits
+
+    if (prefix_len == MAX_KEY_LEN_BITS)
+    {
+        throw std::runtime_error("absurd");
+    }
+
+    auto bb_self = query.get_branch_bits(prefix_len);
+
+    auto p = ptr -> make_proof(query, query_len);
+
+    p.proof_stack.emplace_back();
+    auto& cur_layer = p.proof_stack.back();
+
+    cur_layer.len = prefix_len;
+
+    std::printf("making new layer prefix %s\n", prefix.to_string(prefix_len).c_str());
+
+    for (uint8_t bb = 0; bb < 16; bb++)
+    {    
+        const auto* ptr = get_child(bb);
+
+        if (ptr != nullptr)
+        {
+            std::printf("found child for bb %u bbself %u\n", bb, bb_self);
+            cur_layer.bv.add(bb);
+            if (bb == bb_self) continue;
+
+            std::printf("creating layer for bb %u\n", bb);
+
+            cur_layer.child_data.emplace_back();
+            ptr -> write_metadata_and_hash_to(cur_layer.child_data.back());
+
+            std::printf("child_data.size() %u\n", cur_layer.child_data.size());
+        }
+    }
+
+    return p;
+}
+
 #undef MCTN_DECL
 #undef MCTN_TEMPLATE
+
+template<typename prefix_t,
+         typename value_t,
+         uint32_t TLCACHE_SIZE,
+         DurableInterface storage_t,
+         SnapshotTrieMetadata metadata_t,
+         auto has_value_f>
+bool
+MemcacheTrie<prefix_t, value_t, TLCACHE_SIZE, storage_t, metadata_t, has_value_f>::
+verify_proof(const TrieProof<prefix_t>& proof, const Hash& root_hash)
+{
+    std::optional<metadata_t> carried_meta;
+    std::optional<Hash> carried_hash;
+    std::optional<PrefixLenBits> carried_len;
+
+    for (auto const& layer : proof.proof_stack)
+    {
+        std::printf("verifying layer with len %u\n", layer.len);
+
+        if (layer.len == prefix_t::len())
+        {
+            if (carried_meta.has_value())
+            {
+                std::printf("exit 1\n");
+                return false;
+            }
+
+            std::vector<uint8_t> digest_buffer;
+            write_node_header(digest_buffer, proof.proved_prefix, layer.len);
+
+            if (layer.child_data.size() != 1)
+            {
+                std::printf("exit 2\n");
+                return false;
+            }
+
+            if (!layer.bv.empty())
+            {
+                std::printf("exit 3\n");
+                return false;
+            }
+
+            value_t v;
+            v.from_bytes(layer.child_data.at(0));
+
+            metadata_t m;
+            m.from_value(v);
+            Hash h;
+
+            digest_buffer.insert(
+                digest_buffer.end(),
+                layer.child_data.at(0) . begin(),
+                layer.child_data.at(0) . end());
+
+            std::printf("hash input in middle: %s\n", utils::array_to_str(digest_buffer).c_str());
+
+            if (crypto_generichash(h.data(),
+                           h.size(),
+                           digest_buffer.data(),
+                           digest_buffer.size(),
+                           NULL,
+                           0)
+                != 0) {
+                throw std::runtime_error("error from crypto_generichash");
+            }
+
+            carried_meta = m;
+            carried_hash = h;
+            carried_len = layer.len;
+        } 
+        else
+        {
+            if (carried_meta.has_value())
+            {
+                if (*carried_len <= layer.len)
+                {
+                    std::printf("exit 4\n");
+                    return false;
+                }
+            }
+            auto bb_self = proof.proved_prefix.get_branch_bits(layer.len);
+
+            metadata_t sum;
+
+            bool used_carried = false;
+            TrieBitVector bv = layer.bv;
+
+            size_t idx = 0;
+
+            std::vector<uint8_t> digest_buffer;
+            write_node_header(digest_buffer, proof.proved_prefix, layer.len);
+
+            bv.write(digest_buffer);
+
+            while(!bv.empty())
+            {
+                auto bb = bv.pop();
+                std::printf("pop bb=%u bb_self = %u\n", bb, bb_self);
+
+                if (bb == bb_self)
+                {
+                    if (!carried_meta.has_value())
+                    {
+                        std::printf("exit 5\n");
+                        return false;
+                    }
+                    sum += *carried_meta;
+                    carried_meta->write_to(digest_buffer);
+                    digest_buffer.insert(
+                        digest_buffer.end(),
+                        carried_hash -> begin(),
+                        carried_hash -> end());
+                    used_carried = true;
+                    continue;
+                }
+
+                metadata_t new_meta;
+
+                std::printf("idx %u child_data.size() %u\n", idx, layer.child_data.size());
+
+                if (layer.child_data.size() <= idx) {
+                    std::printf("exit 6\n");
+                    return false;
+                }
+                Hash h;
+                if (layer.child_data.at(idx).size() < h.size())
+                {
+                    std::printf("exit 7.0\n");
+                    return false;
+                }
+                std::memcpy(h.data(), layer.child_data.data() + layer.child_data.size() - h.size(), h.size());
+
+                if (!new_meta.try_parse(layer.child_data.at(idx).data(), layer.child_data.at(idx).size() - h.size()))
+                {
+                    std::printf("exit 7\n");
+                    return false;
+                }
+                idx++;
+
+                sum += new_meta;
+                new_meta.write_to(digest_buffer);
+                digest_buffer.insert(
+                    digest_buffer.end(),
+                    h.begin(),
+                    h.end());
+            }
+            if (carried_meta.has_value() && !used_carried)
+            {
+                std::printf("exit 8\n");
+
+                return false;
+            }
+
+            Hash h;
+
+            std::printf("hash input at end: %s\n", utils::array_to_str(digest_buffer).c_str());
+
+            if (crypto_generichash(h.data(),
+                        h.size(),
+                        digest_buffer.data(),
+                        digest_buffer.size(),
+                        NULL,
+                        0)
+                != 0) {
+                throw std::runtime_error("error from crypto_generichash");
+            }
+            carried_meta = sum;
+            carried_hash = h;
+            carried_len = layer.len;
+        }
+    }
+
+    if (!carried_meta.has_value())
+    {
+                        std::printf("exit 9\n");
+
+        return false;
+    }
+    return *carried_hash == root_hash;
+}
 
 } // namespace trie

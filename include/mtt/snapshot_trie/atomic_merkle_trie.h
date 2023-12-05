@@ -655,7 +655,8 @@ AMTN_DECL ::compute_hash_and_normalize(AMT_gc_t auto& gc,
 
     if (is_leaf()) {
         if (!value.has_logical_value()) {
-            metadata.size = 0;
+         //   metadata.size = 0;
+            metadata = metadata_t();
             hash_valid = true;
             return metadata;
         }
