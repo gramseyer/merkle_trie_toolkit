@@ -373,6 +373,31 @@ TEST_CASE("memcache trie emptyvalue small", "[proof]")
         1,
         m.get_storage(),
         EmptyDurableValue{});
+    root->template insert<&overwrite_merge_fn_memcache>(
+        UInt64Prefix(0x0000'0000'0000'0001),
+        m.get_gc(),
+        1,
+        m.get_storage(),
+        EmptyDurableValue{});
+    root->template insert<&overwrite_merge_fn_memcache>(
+        UInt64Prefix(0x0000'0000'0000'0010),
+        m.get_gc(),
+        1,
+        m.get_storage(),
+        EmptyDurableValue{});
+    root->template insert<&overwrite_merge_fn_memcache>(
+        UInt64Prefix(0x0000'0000'0000'0100),
+        m.get_gc(),
+        1,
+        m.get_storage(),
+        EmptyDurableValue{});
+    root->template insert<&overwrite_merge_fn_memcache>(
+        UInt64Prefix(0x0000'0000'0000'1000),
+        m.get_gc(),
+        1,
+        m.get_storage(),
+        EmptyDurableValue{});
+    
 
     /*trie.insert(UInt64Prefix(0x0000'0000'0000'0000), EmptyValue{}, alloc);
     trie.insert(UInt64Prefix(0x0000'0000'0000'0001), EmptyValue{}, alloc);
@@ -387,38 +412,38 @@ TEST_CASE("memcache trie emptyvalue small", "[proof]")
         auto p = m.make_proof(UInt64Prefix(0x0000'0000'0000'0000), PrefixLenBits{64});
 
         REQUIRE(trie_t::verify_proof(p, roothash));
-    //  REQUIRE(p.proof_stack.size() == 6);
+        REQUIRE(p.proof_stack.size() == 6);
     }
 
-    /*
+    
 
     SECTION("leaf proof 2")
     {
-        auto p = trie.make_proof(UInt64Prefix(0x0000'0000'0000'0001), PrefixLenBits{64});
+        auto p = m.make_proof(UInt64Prefix(0x0000'0000'0000'0001), PrefixLenBits{64});
 
         REQUIRE(trie_t::verify_proof(p, roothash));
     }
     SECTION("leaf proof 3")
     {
-        auto p = trie.make_proof(UInt64Prefix(0x0000'0000'0000'1000), PrefixLenBits{64});
+        auto p = m.make_proof(UInt64Prefix(0x0000'0000'0000'1000), PrefixLenBits{64});
 
         REQUIRE(trie_t::verify_proof(p, roothash));
     }
 
     SECTION("leaf proof nexist 1")
     {
-        auto p = trie.make_proof(UInt64Prefix(0x0000'0000'0000'0002), PrefixLenBits{64});
+        auto p = m.make_proof(UInt64Prefix(0x0000'0000'0000'0002), PrefixLenBits{64});
 
         REQUIRE(trie_t::verify_proof(p, roothash));
         REQUIRE(p.proof_stack.size() == 5);
     }
     SECTION("leaf proof nexist extreme")
     {
-        auto p = trie.make_proof(UInt64Prefix(0x1000'0000'0000'0002), PrefixLenBits{64});
+        auto p = m.make_proof(UInt64Prefix(0x1000'0000'0000'0002), PrefixLenBits{64});
 
         REQUIRE(trie_t::verify_proof(p, roothash));
         REQUIRE(p.proof_stack.size() == 1);
-    } */
+    }
 }
 
 } // namespace trie

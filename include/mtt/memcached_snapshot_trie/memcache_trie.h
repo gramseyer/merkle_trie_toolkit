@@ -1352,7 +1352,8 @@ verify_proof(const TrieProof<prefix_t>& proof, const Hash& root_hash)
                     std::printf("exit 7.0\n");
                     return false;
                 }
-                std::memcpy(h.data(), layer.child_data.data() + layer.child_data.size() - h.size(), h.size());
+
+                std::memcpy(h.data(), layer.child_data.at(idx).data() + layer.child_data.at(idx).size() - h.size(), h.size());
 
                 if (!new_meta.try_parse(layer.child_data.at(idx).data(), layer.child_data.at(idx).size() - h.size()))
                 {
