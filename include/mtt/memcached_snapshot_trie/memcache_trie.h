@@ -842,8 +842,6 @@ MCTN_DECL ::compute_hash_and_normalize(deferred_gc_t auto& gc,
         // sets size = 1
         metadata.from_value(*value);
 
-        std::printf("hash input at value: %s\n", utils::array_to_str(digest_bytes).c_str());
-
         if (crypto_generichash(hash.data(),
                                hash.size(),
                                digest_bytes.data(),
@@ -930,8 +928,6 @@ MCTN_DECL ::compute_hash_and_normalize(deferred_gc_t auto& gc,
 
         ptr -> write_metadata_and_hash_to(digest_bytes);
     }
-
-    std::printf("hash input at map: %s\n", utils::array_to_str(digest_bytes).c_str());
 
     if (crypto_generichash(hash.data(),
                            hash.size(),
@@ -1147,7 +1143,7 @@ MCTN_DECL::make_proof(prefix_t const& query, PrefixLenBits const& query_len) con
 
     if ((match_len < prefix_len) || (match_len == prefix_len && prefix_len >= std::min(query_len, MAX_KEY_LEN_BITS)) || (ptr == nullptr))
     {
-        std::printf("making new base proof: prefix %s\n", prefix.to_string(prefix_len).c_str());
+        // make new base proof
         TrieProof<prefix_t> p;
         p.proved_prefix = query;
 
@@ -1196,24 +1192,17 @@ MCTN_DECL::make_proof(prefix_t const& query, PrefixLenBits const& query_len) con
 
     cur_layer.len = prefix_len;
 
-    std::printf("making new layer prefix %s\n", prefix.to_string(prefix_len).c_str());
-
     for (uint8_t bb = 0; bb < 16; bb++)
     {    
         const auto* ptr = get_child(bb);
 
         if (ptr != nullptr)
         {
-            std::printf("found child for bb %u bbself %u\n", bb, bb_self);
             cur_layer.bv.add(bb);
             if (bb == bb_self) continue;
 
-            std::printf("creating layer for bb %u\n", bb);
-
             cur_layer.child_data.emplace_back();
             ptr -> write_metadata_and_hash_to(cur_layer.child_data.back());
-
-            std::printf("child_data.size() %u\n", cur_layer.child_data.size());
         }
     }
 
@@ -1239,13 +1228,10 @@ verify_proof(const TrieProof<prefix_t>& proof, const Hash& root_hash)
 
     for (auto const& layer : proof.proof_stack)
     {
-        std::printf("verifying layer with len %u\n", layer.len);
-
         if (layer.len == prefix_t::len())
         {
             if (carried_meta.has_value())
             {
-                std::printf("exit 1\n");
                 return false;
             }
 
@@ -1254,13 +1240,11 @@ verify_proof(const TrieProof<prefix_t>& proof, const Hash& root_hash)
 
             if (layer.child_data.size() != 1)
             {
-                std::printf("exit 2\n");
                 return false;
             }
 
             if (!layer.bv.empty())
             {
-                std::printf("exit 3\n");
                 return false;
             }
 
@@ -1275,8 +1259,6 @@ verify_proof(const TrieProof<prefix_t>& proof, const Hash& root_hash)
                 digest_buffer.end(),
                 layer.child_data.at(0) . begin(),
                 layer.child_data.at(0) . end());
-
-            std::printf("hash input in middle: %s\n", utils::array_to_str(digest_buffer).c_str());
 
             if (crypto_generichash(h.data(),
                            h.size(),
@@ -1298,7 +1280,6 @@ verify_proof(const TrieProof<prefix_t>& proof, const Hash& root_hash)
             {
                 if (*carried_len <= layer.len)
                 {
-                    std::printf("exit 4\n");
                     return false;
                 }
             }
@@ -1319,13 +1300,11 @@ verify_proof(const TrieProof<prefix_t>& proof, const Hash& root_hash)
             while(!bv.empty())
             {
                 auto bb = bv.pop();
-                std::printf("pop bb=%u bb_self = %u\n", bb, bb_self);
 
                 if (bb == bb_self)
                 {
                     if (!carried_meta.has_value())
                     {
-                        std::printf("exit 5\n");
                         return false;
                     }
                     sum += *carried_meta;
@@ -1340,16 +1319,12 @@ verify_proof(const TrieProof<prefix_t>& proof, const Hash& root_hash)
 
                 metadata_t new_meta;
 
-                std::printf("idx %u child_data.size() %u\n", idx, layer.child_data.size());
-
                 if (layer.child_data.size() <= idx) {
-                    std::printf("exit 6\n");
                     return false;
                 }
                 Hash h;
                 if (layer.child_data.at(idx).size() < h.size())
                 {
-                    std::printf("exit 7.0\n");
                     return false;
                 }
 
@@ -1357,7 +1332,6 @@ verify_proof(const TrieProof<prefix_t>& proof, const Hash& root_hash)
 
                 if (!new_meta.try_parse(layer.child_data.at(idx).data(), layer.child_data.at(idx).size() - h.size()))
                 {
-                    std::printf("exit 7\n");
                     return false;
                 }
                 idx++;
@@ -1371,14 +1345,10 @@ verify_proof(const TrieProof<prefix_t>& proof, const Hash& root_hash)
             }
             if (carried_meta.has_value() && !used_carried)
             {
-                std::printf("exit 8\n");
-
                 return false;
             }
 
             Hash h;
-
-            std::printf("hash input at end: %s\n", utils::array_to_str(digest_buffer).c_str());
 
             if (crypto_generichash(h.data(),
                         h.size(),
