@@ -154,7 +154,7 @@ struct EphemeralTrieApplyRange
                 auto const& obj = allocator.get_object(other.work_list.at(0) >> 32);
                 if (obj.get_prefix_len() >= max_split_len)
                 {
-                    splittable = false;
+                    other.splittable = false;
                     return;
                 }
                 /**
