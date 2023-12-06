@@ -1154,11 +1154,11 @@ MCTN_DECL::make_proof(prefix_t const& query, PrefixLenBits const& query_len) con
 
         if (prefix_len == MAX_KEY_LEN_BITS)
         {
-            auto const& v = *std::get<variant_value_t>(body);
+            auto const& v = std::get<variant_value_t>(body);
             trie_assert(v.has_logical_value(), "cannot make proof to invalid value");
 
             cur_layer.child_data.emplace_back();
-            v.copy_data(cur_layer.child_data.back());
+            v->copy_data(cur_layer.child_data.back());
         } else
         {
             for (uint8_t bb = 0; bb < 16; bb++)
