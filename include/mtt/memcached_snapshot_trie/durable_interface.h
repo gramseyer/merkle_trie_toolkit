@@ -257,7 +257,7 @@ class DurableResult
 
     DurableKeySlice<KEY_LEN_BYTES> get_key() const
     {
-        return DurableKeySlice<KEY_LEN_BYTES>{ backing.data() + 1 };
+        return DurableKeySlice<KEY_LEN_BYTES>{ reinterpret_cast<const uint8_t*>(backing.data()) + 1 };
     }
 
     PrefixLenBits get_delete() const

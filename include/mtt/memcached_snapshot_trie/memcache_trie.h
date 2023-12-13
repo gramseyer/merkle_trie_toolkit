@@ -434,9 +434,10 @@ class MemcacheTrie
 
     storage_t& get_storage() { return storage; }
 
-    MemcacheTrie(uint32_t current_ts)
+    MemcacheTrie(uint32_t current_ts, auto&... storage_ctors)
         : root(new node_t(current_ts))
         , gc()
+        , storage(storage_ctors...)
     {}
 
     void do_gc() { gc.gc(); }
