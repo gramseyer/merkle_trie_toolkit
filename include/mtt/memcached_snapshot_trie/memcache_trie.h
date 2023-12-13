@@ -1046,6 +1046,12 @@ MCTN_DECL::log_self_active(DurableInterface auto& interface)
     trie_assert(metadata_valid, "cannot commit self before hash");
     trie_assert(!is_evicted(), "cannot log active something already evicted");
 
+    auto cur_ts = get_ts_ptr();
+    auto prev_ts = get_previous_ts_ptr();
+
+    trie_assert(cur_ts != prev_ts, "don't want to accidentally overrwrite db");
+
+
     if (is_leaf() && std::get<variant_value_t>(body).has_logical_value()) {
         // if not has_value, self is not active, so node will be deleted in a
         // hash and normalize operation we don't delete here, assumign the
@@ -1056,9 +1062,9 @@ MCTN_DECL::log_self_active(DurableInterface auto& interface)
         v.make_value_node(prefix,
                           metadata,
                           hash,
-                          get_previous_ts_ptr(),
+                          prev_ts,
                           *std::get<variant_value_t>(body));
-        interface.log_durable_value(get_ts_ptr(), v);
+        interface.log_durable_value(cur_ts, v);
         update_previous_ts_ptr();
         return;
     } 
@@ -1072,7 +1078,7 @@ MCTN_DECL::log_self_active(DurableInterface auto& interface)
     m.internal.metadata = metadata;
     m.internal.hash = hash;
     m.internal.key_len_bits = prefix_len.len;
-    m.internal.previous = get_previous_ts_ptr();
+    m.internal.previous = prev_ts;
     TrieBitVector bv;
     uint8_t sz = 0;
 
@@ -1090,21 +1096,32 @@ MCTN_DECL::log_self_active(DurableInterface auto& interface)
     durable_value_t v;
     v.make_map_node(prefix, m);
 
-    interface.log_durable_value(get_ts_ptr(), v);
+    interface.log_durable_value(cur_ts, v);
     update_previous_ts_ptr();
+    return;
 }
 
 MCTN_TEMPLATE
 void
 MCTN_DECL::log_self_deleted(DurableInterface auto& interface)
 {
+    auto prev_ts = get_previous_ts_ptr();
+    if (prev_ts == null_ts_ptr)
+    {
+        return;
+    }
+    auto cur_ts = get_ts_ptr();
+
+    trie_assert(cur_ts != prev_ts, "don't want to accidentally overrwrite db");
+
     durable_value_t v;
-    v.make_delete_node(get_previous_ts_ptr());
+    v.make_delete_node(prev_ts);
     interface.log_durable_value(get_ts_ptr(), v);
     // not strictly necessary,
     // but acts as a guard against future errors if this deleted node
     // is somehow still referenced
     update_previous_ts_ptr();
+    return;
 }
 
 MCTN_TEMPLATE
