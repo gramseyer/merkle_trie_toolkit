@@ -20,6 +20,8 @@ struct EmptyValue {
 	constexpr static void copy_data(std::vector<uint8_t>& buf) {}
 
 	EmptyValue() = default;
+
+	void from_bytes(std::vector<uint8_t> const& bytes) {}
 };
 
 template<typename V, auto serialize_fn>
@@ -44,8 +46,6 @@ struct BetterSerializeWrapper : public V
 	void copy_data(std::vector<uint8_t>& buf) const
 	{
 		serialize_fn(buf, *this);
-	//	auto serialization = serialize_fn(*this);
-	//	buf.insert(buf.end(), serialization.begin(), serialization.end());
 	}
 };
 

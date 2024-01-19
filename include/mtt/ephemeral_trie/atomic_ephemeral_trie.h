@@ -4,6 +4,8 @@
 #include <atomic>
 #include <cstdint>
 #include <cinttypes>
+#include <optional>
+#include <vector>
 
 #include "mtt/common/bitvector.h"
 #include "mtt/common/prefix.h"
@@ -11,6 +13,7 @@
 #include "mtt/common/debug_macros.h"
 #include "mtt/common/insert_fn.h"
 #include "mtt/common/utils.h"
+#include "mtt/common/proof.h"
 
 #include "mtt/ephemeral_trie/allocator.h"
 #include "mtt/ephemeral_trie/ranges.h"
@@ -69,14 +72,14 @@ class AtomicChildrenMap : private utils::NonMovableOrCopyable
     {
         std::printf("self: %p\n", this);
         for (uint8_t i = 0; i < 16; i++) {
-            std::printf("    %u %llx\n",
+            std::printf("    %u %" PRIx64 "\n",
                         i,
                         children[i].load(std::memory_order_acquire));
         }
     }
 };
 
-template<typename ValueType, typename PrefixT, uint8_t LOG_BUFSIZE, EphemeralTrieMetadata metadata_t>
+template<typename ValueType, typename PrefixT, EphemeralTrieMetadata metadata_t, uint8_t LOG_BUFSIZE>
 class AtomicTrie;
 
 template<typename ValueType, typename PrefixT, uint8_t LOG_BUFSIZE, EphemeralTrieMetadata metadata_t>
@@ -162,7 +165,11 @@ class alignas(64) AtomicTrieNode : private utils::NonMovableOrCopyable
         prefix = key;
         prefix_len = len;
 
-        prefix.truncate(prefix_len);
+        // TODO, strange bug -- having this as prefix_len, instead of len,
+        // somehow optimizes to inputting the value of prefix_len before
+        // the prefix_len = len call. (in prior commit e527d13ae356b40025742f7eac7eb90eb46d52f5
+        // of groundhog, using ./blockstm_comparison with short_stuff=true
+        prefix.truncate(len);
 
         children.set_unique_child(single_child_branch_bits,
                                   single_child_pointer);
@@ -321,9 +328,30 @@ class alignas(64) AtomicTrieNode : private utils::NonMovableOrCopyable
         }
         return total_size;
     }
+
+    metadata_t get_metadata(const prefix_t& query_prefix, PrefixLenBits query_len, allocator_t const& allocator) const
+    {
+        if (prefix_len > query_len)
+        {
+            throw std::runtime_error("invalid query");
+        }
+        if (prefix_len == query_len)
+        {
+            if (!metadata.hash_valid) {
+                throw std::runtime_error("invalid metadata access");
+            }
+            return metadata;
+        }
+
+        auto bb = query_prefix.get_branch_bits(prefix_len);
+
+        return allocator.get_object(children.get(bb) >> 32).get_metadata(query_prefix, query_len, allocator);
+    }
+
+    TrieProof<prefix_t> make_proof(prefix_t const& query_prefix, PrefixLenBits const& query_len, allocator_t const& allocator) const;
 };
 
-template<typename ValueType, typename PrefixT, uint8_t LOG_BUFSIZE = 19, EphemeralTrieMetadata metadata_t = EphemeralTrieMetadataBase>
+template<typename ValueType, typename PrefixT, EphemeralTrieMetadata metadata_t = EphemeralTrieMetadataBase, uint8_t LOG_BUFSIZE = 19>
 class AtomicTrie
 {
   public:
@@ -469,6 +497,13 @@ class AtomicTrie
         return root.size();
     }
 
+    TrieProof<PrefixT> make_proof(const prefix_t& query, PrefixLenBits const& query_len) const
+    {
+        return root.make_proof(query, query_len, allocator);
+    }
+
+    static bool verify_proof(TrieProof<prefix_t> const& proof, const Hash& root_hash);
+
     // TESTING
 
     uint32_t deep_sizecheck() const { return root.deep_sizecheck(allocator); }
@@ -480,6 +515,10 @@ class AtomicTrie
 
     const_applyable_ref get_applyable_ref() const {
         return const_applyable_ref { &root, allocator };
+    }
+
+    metadata_t get_metadata(const prefix_t& query_prefix, PrefixLenBits prefix_len) const {
+        return root.get_metadata(query_prefix, prefix_len, allocator);
     }
 };
 
@@ -675,7 +714,7 @@ ATN_DECL :: accumulate_values_parallel_worker(VectorType& output,
                                             const allocator_t& allocator) const
 {
     if (prefix_len == MAX_KEY_LEN_BITS) {
-        output[vector_offset] = get_fn(allocator.get_value(value_pointer));
+        output[vector_offset] = get_fn(prefix, allocator.get_value(value_pointer));
         //AccumulatorFn::accumulate(output, vector_offset, children.value(allocator));
         //output[vector_offset] = children.value(allocator);
         return;
@@ -736,7 +775,6 @@ ATN_DECL :: compute_hash(allocator_t& allocator, std::vector<uint8_t>& digest_bu
 
     if (prefix_len == MAX_KEY_LEN_BITS)
     {
-
         digest_buffer.clear();
         write_node_header(digest_buffer, prefix, prefix_len);
         
@@ -814,7 +852,234 @@ ATN_DECL::get_value(const prefix_t& query_prefix, allocator_t const& allocator) 
     return allocator.get_object(relevant_child).get_value(query_prefix, allocator);
 }
 
+ATN_TEMPLATE
+TrieProof<PrefixT> 
+ATN_DECL::make_proof(prefix_t const& query, PrefixLenBits const& query_len, allocator_t const& allocator) const
+{
+    auto match_len = get_prefix_match_len(query);
+
+    uint32_t ptr = UINT32_MAX;
+    if (prefix_len != MAX_KEY_LEN_BITS)
+    {
+        auto bb_self = query.get_branch_bits(prefix_len);
+        ptr = (children.get(bb_self) >> 32);
+    }
+
+    if ((match_len < prefix_len) || (match_len == prefix_len && prefix_len >= std::min(query_len, MAX_KEY_LEN_BITS)) || (ptr == UINT32_MAX))
+    {
+        // new base proof
+        TrieProof<prefix_t> p;
+        p.proved_prefix = query;
+
+        p.proof_stack.emplace_back();
+        auto& cur_layer = p.proof_stack.back();
+
+        cur_layer.len = prefix_len;
+
+        if (prefix_len == MAX_KEY_LEN_BITS)
+        {
+            cur_layer.child_data.emplace_back();
+            auto const& value = allocator.get_value(value_pointer);
+            value.copy_data(cur_layer.child_data.back());
+        } else
+        {
+            for (uint8_t bb = 0; bb < 16; bb++)
+            {
+                const uint32_t ptr = (children.get(bb) >> 32);
+
+                if (ptr != UINT32_MAX)
+                {
+                    cur_layer.child_data.emplace_back();
+                    metadata_t temp;
+                    allocator.get_object(ptr).append_metadata(cur_layer.child_data.back(), temp);
+                    cur_layer.bv.add(bb);
+                }
+            }
+        }
+        return p;
+    }
+
+    // match_len == prefix_len && query_len > prefix_len && exists active child at the right branch bits
+
+    if (prefix_len == MAX_KEY_LEN_BITS)
+    {
+        throw std::runtime_error("absurd");
+    }
+
+    auto bb_self = query.get_branch_bits(prefix_len);
+
+    auto p = allocator.get_object(ptr).make_proof(query, query_len, allocator);
+
+    p.proof_stack.emplace_back();
+    auto& cur_layer = p.proof_stack.back();
+
+    cur_layer.len = prefix_len;
+
+    //make new proof layer
+
+    for (uint8_t bb = 0; bb < 16; bb++)
+    {    
+        const uint32_t ptr_child = (children.get(bb) >> 32);
+
+        if (ptr_child != UINT32_MAX)
+        {
+            cur_layer.bv.add(bb);
+            if (bb == bb_self) continue;
+
+            // create new layer entry for bb
+
+            cur_layer.child_data.emplace_back();
+            metadata_t temp;
+            allocator.get_object(ptr_child).append_metadata(cur_layer.child_data.back(), temp);
+        }
+    }
+
+    return p;
+}
+
+
 #undef ATN_DECL
 #undef ATN_TEMPLATE
+
+template<typename ValueType, typename PrefixT, EphemeralTrieMetadata metadata_t, uint8_t LOG_BUFSIZE>
+bool
+AtomicTrie<ValueType, PrefixT, metadata_t, LOG_BUFSIZE>::verify_proof(const TrieProof<PrefixT>& proof, const Hash& root_hash)
+{
+    std::optional<metadata_t> carried_meta;
+    std::optional<PrefixLenBits> carried_len;
+
+    for (auto const& layer : proof.proof_stack)
+    {
+        if (layer.len == prefix_t::len())
+        {
+            if (carried_meta.has_value())
+            {
+                // max len prefix must be first proof layer
+                return false;
+            }
+
+            std::vector<uint8_t> digest_buffer;
+            write_node_header(digest_buffer, proof.proved_prefix, layer.len);
+
+            if (layer.child_data.size() != 1)
+            {
+                // value has only one child_data
+                return false;
+            }
+
+            if (!layer.bv.empty())
+            {
+                return false;
+            }
+
+            ValueType v;
+            v.from_bytes(layer.child_data.at(0));
+
+            metadata_t m;
+            m.from_value(v);
+
+            digest_buffer.insert(
+                digest_buffer.end(),
+                layer.child_data.at(0) . begin(),
+                layer.child_data.at(0) . end());
+
+            if (crypto_generichash(m.hash.data(),
+                           m.hash.size(),
+                           digest_buffer.data(),
+                           digest_buffer.size(),
+                           NULL,
+                           0)
+                != 0) {
+                throw std::runtime_error("error from crypto_generichash");
+            }
+            m.hash_valid = true;
+
+            carried_meta = m;
+            carried_len = layer.len;
+        } 
+        else
+        {
+            if (carried_meta.has_value())
+            {
+                if (*carried_len <= layer.len)
+                {
+                    // proof lengths should monotonically decrease going towards root
+                    return false;
+                }
+            }
+            auto bb_self = proof.proved_prefix.get_branch_bits(layer.len);
+
+            metadata_t sum;
+
+            bool used_carried = false;
+            TrieBitVector bv = layer.bv;
+
+            size_t idx = 0;
+
+            std::vector<uint8_t> digest_buffer;
+            write_node_header(digest_buffer, proof.proved_prefix, layer.len);
+
+            bv.write(digest_buffer);
+
+            while(!bv.empty())
+            {
+                auto bb = bv.pop();
+
+                if (bb == bb_self)
+                {
+                    if (!carried_meta.has_value())
+                    {
+                        // this wouldn't make sense, have to start at a value
+                        return false;
+                    }
+                    sum += *carried_meta;
+                    carried_meta->write_to(digest_buffer);
+                    used_carried = true;
+                    continue;
+                }
+
+                metadata_t new_meta;
+
+                if (layer.child_data.size() <= idx) {
+                    // missing child_data for some bb
+                    return false;
+                }
+                if (!new_meta.try_parse(layer.child_data.at(idx).data(), layer.child_data.at(idx).size()))
+                {
+                    return false;
+                }
+                idx++;
+
+                sum += new_meta;
+                new_meta.write_to(digest_buffer);
+            }
+            if (carried_meta.has_value() && !used_carried)
+            {
+                // didn't consume the metadata carried from prev proof layer
+                return false;
+            }
+
+            if (crypto_generichash(sum.hash.data(),
+                        sum.hash.size(),
+                        digest_buffer.data(),
+                        digest_buffer.size(),
+                        NULL,
+                        0)
+                != 0) {
+                throw std::runtime_error("error from crypto_generichash");
+            }
+            sum.hash_valid = true;
+            carried_meta = sum;
+            carried_len = layer.len;
+        }
+    }
+
+    if (!carried_meta.has_value())
+    {
+        // proof was empty
+        return false;
+    }
+    return carried_meta->hash == root_hash;
+}
 
 } // namespace trie

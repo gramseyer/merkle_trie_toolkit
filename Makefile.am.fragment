@@ -13,6 +13,7 @@ mtt_TEST_CCS = \
 	%reldir%/tests/test_prefix.cc \
 	%reldir%/tests/test_serialize.cc \
 	%reldir%/tests/test_layered_trie.cc \
-	%reldir%/tests/test_memcache_trie.cc
+	%reldir%/tests/test_memcache_trie.cc \
+	%reldir%/tests/test_ephemeraltrie_proofs.cc
 
 $(mtt_TEST_CCS:.cc=.o) : CXXFLAGS += $(mtt_TEST_CFLAGS)

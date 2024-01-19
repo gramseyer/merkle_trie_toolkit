@@ -13,7 +13,7 @@ list of trie node children pointers are actove.
 */
 struct TrieBitVector : public utils::BitVector<uint16_t>
 {
-    void write_to(unsigned char* ptr)
+    void write_to(unsigned char* ptr) const
     {
         utils::write_unsigned_big_endian(ptr, bv);
     }

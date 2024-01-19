@@ -16,6 +16,7 @@ hash_serialize_fn(const Hash& hash)
   return std::vector<uint8_t>(hash.begin(), hash.end());
 }
 
+
 struct ProofNode
 {
 	std::array<uint8_t, 4> prefix_length_and_bv;
