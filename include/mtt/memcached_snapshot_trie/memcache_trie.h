@@ -24,6 +24,7 @@
 #include <sodium.h>
 
 #include <utils/assert.h>
+#include <utils/compat.h>
 
 namespace trie {
 
@@ -613,7 +614,8 @@ MCTN_DECL::insert(prefix_t const& new_prefix,
                 // only reference to new_node is local
             }
         }
-        __builtin_ia32_pause();
+        SPINLOCK_PAUSE();
+	//__builtin_ia32_pause();
     }
 }
 
@@ -764,7 +766,8 @@ MCTN_DECL ::get_or_make_subnode_ref(const prefix_t& query_prefix,
             // only reference to intermediate is local
             delete intermediate;
         }
-        __builtin_ia32_pause();
+        SPINLOCK_PAUSE();
+	//__builtin_ia32_pause();
     }
 }
 
@@ -982,7 +985,8 @@ MCTN_DECL::get_value(const prefix_t& query_prefix,
             return ptr->get_value(query_prefix, storage);
         }
 
-        __builtin_ia32_pause();
+        SPINLOCK_PAUSE();
+	//__builtin_ia32_pause();
     }
 }
 

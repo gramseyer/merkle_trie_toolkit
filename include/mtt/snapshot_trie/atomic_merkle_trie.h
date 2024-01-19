@@ -15,6 +15,7 @@
 #include <type_traits>
 
 #include <utils/threadlocal_cache.h>
+#include <utils/compat.h>
 
 #include "mtt/snapshot_trie/concepts.h"
 
@@ -493,7 +494,8 @@ AMTN_DECL::insert(prefix_t const& new_prefix,
             delete new_node;
             // only reference to new_node is local
         }
-        __builtin_ia32_pause();
+	SPINLOCK_PAUSE();
+        //__builtin_ia32_pause();
     }
 }
 
@@ -640,7 +642,8 @@ AMTN_DECL ::get_or_make_subnode_ref(const query_prefix_t& query_prefix,
             }
             gc.free(intermediate);
         }
-        __builtin_ia32_pause();
+        SPINLOCK_PAUSE();
+	//__builtin_ia32_pause();
     }
 }
 
