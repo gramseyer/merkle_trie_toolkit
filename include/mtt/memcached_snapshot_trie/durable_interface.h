@@ -76,16 +76,36 @@ struct __attribute__((packed)) DurableMapNodeInternal
     TimestampPointerPair previous;
 };
 
+struct __attribute__((packed)) DurableMapNodeInternalNoMeta
+{
+    Hash hash;
+    uint16_t key_len_bits;
+    uint16_t bv;
+    TimestampPointerPair previous;
+};
+
 // This is standard-layout, and importantly,
 // we can take a slice of a list and get a valid node.
 template<typename metadata_t>
 struct __attribute__((packed)) DurableMapNode
 {
-    DurableMapNodeInternal<metadata_t> internal;
+    constexpr static bool meta_flag = !std::is_empty<metadata_t>::value;
+    using internal_t = std::conditional_t<meta_flag, DurableMapNodeInternal<metadata_t>, DurableMapNodeInternalNoMeta>;
+
+    internal_t internal;
     TimestampPointerPair children[16];
 
     static_assert(TriviallyCopyable<metadata_t>,
                   "metadata must be trivially copyable");
+    static_assert(TriviallyCopyable<DurableMapNodeInternal<metadata_t>>, "internal meta node must be trivially copyable");
+
+    void set_meta(const metadata_t& m)
+    {
+        if constexpr (meta_flag)
+        {
+            internal.metadata = m;
+        }
+    }
 };
 
 /**
@@ -101,12 +121,29 @@ struct DurableValueSlice
 };
 
 template<typename metadata_t>
-struct __attribute__((packed)) DurableValueHeader
+struct __attribute__((packed)) DurableValueHeaderInternal
 {
-    metadata_t metadata;
+    metadata_t meta;
     Hash hash;
     TimestampPointerPair previous;
     uint32_t value_len;
+};
+
+struct __attribute__((packed)) DurableValueHeaderInternalNoMeta
+{
+    Hash hash;
+    TimestampPointerPair previous;
+    uint32_t value_len;
+};
+
+template<typename metadata_t>
+struct __attribute__((packed)) DurableValueHeader
+{
+    constexpr static bool meta_flag = !std::is_empty<metadata_t>::value;
+
+    using internal_t = std::conditional_t<meta_flag, DurableValueHeaderInternal<metadata_t>, DurableValueHeaderInternalNoMeta>;
+
+    internal_t internal;
 
     static_assert(TriviallyCopyable<metadata_t>,
                   "metadata must be trivially copyable");
@@ -118,9 +155,11 @@ template<typename metadata_t>
 DurableValueSlice
 DurableValueHeader<metadata_t>::to_value_slice() const
 {
+    static_assert(offsetof(DurableValueHeader<metadata_t>, internal) == 0, "mismatch");
+
     return DurableValueSlice{ reinterpret_cast<const uint8_t*>(this)
                                   + sizeof(DurableValueHeader<metadata_t>),
-                              value_len };
+                              internal.value_len };
 }
 
 template<uint8_t KEY_LEN_BYTES>
@@ -151,6 +190,8 @@ class DurableValue
     {
         const uint8_t* vp = reinterpret_cast<const uint8_t*>(&v);
         buffer.insert(buffer.end(), vp, vp + std::min<uint32_t>(sz, sizeof(T)));
+
+        static_assert(!std::is_empty<T>::value, "can't append empty type");
     }
 
     void add_key(const TriePrefix auto& key)
@@ -179,7 +220,7 @@ class DurableValue
         reset_to_map_node();
         add_key(key);
         append_type(map_node,
-                    sizeof(DurableMapNodeInternal<metadata_t>)
+                    sizeof(typename DurableMapNode<metadata_t>::internal_t)
                     + utils::detail::BVManipFns<uint16_t>::size(map_node.internal.bv)
                               * sizeof(TimestampPointerPair));
     }
@@ -196,14 +237,19 @@ class DurableValue
         uint32_t value_h_offset = buffer.size();
         constexpr uint32_t value_h_size
             = sizeof(DurableValueHeader<metadata_t>);
-        append_type(metadata);
+        if constexpr (DurableValueHeader<metadata_t>::meta_flag)
+        {
+            append_type(metadata);
+        }
         append_type(hash);
         append_type(previous);
+        // placeholder for value_len
         append_type(static_cast<uint32_t>(0));
+
         v.copy_data(buffer);
         auto* vh = reinterpret_cast<DurableValueHeader<metadata_t>*>(
             buffer.data() + value_h_offset);
-        vh->value_len = buffer.size() - (value_h_offset + value_h_size);
+        vh->internal.value_len = buffer.size() - (value_h_offset + value_h_size);
     }
 
     const std::vector<uint8_t>& get_buffer() const { return buffer; }

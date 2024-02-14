@@ -108,6 +108,7 @@ overwrite_merge_fn_memcache(EmptyDurableValue& a, const EmptyDurableValue& b)
 
 TEST_CASE("basic memcache check log insert", "[memcache]")
 {
+    std::printf("memcache check\n");
     using mt
         = MemcacheTrie<UInt64Prefix, EmptyDurableValue, 256, InMemoryInterface<8>>;
 
@@ -137,6 +138,9 @@ TEST_CASE("basic memcache check log insert", "[memcache]")
         = { 0xAA, 0xAA, 0xBB, 0xBB, 0xCC, 0xCC, 0xDD, 0xDD };
 
     auto add_expect = [&expect]<typename T>(T const& t) {
+        if (std::is_empty<T>::value) {
+            return;
+        }
         expect.insert(expect.end(),
                       reinterpret_cast<const uint8_t*>(&t),
                       reinterpret_cast<const uint8_t*>(&t) + sizeof(T));
@@ -148,6 +152,7 @@ TEST_CASE("basic memcache check log insert", "[memcache]")
     add_expect(obj_tsp);
     // value len is 32
     add_expect(static_cast<uint32_t>(0));
+
     test_log_value(m.get_storage().get_raw(obj_ptr->get_ts_ptr()), expect);
 
     expect = { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };

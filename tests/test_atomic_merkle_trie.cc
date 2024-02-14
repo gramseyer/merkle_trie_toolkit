@@ -541,52 +541,52 @@ TEST_CASE("no logical value memcache", "[memcache]")
 
     SECTION("only empty values")
     {
-        auto root = m.get_root_and_invalidate_hash(0);
+        auto root = m.get_root_and_invalidate_hash(1);
 
-        root -> template insert<&detail::no_merge_fn>(UInt64Prefix(0x0000'0000'0000'0001), m.get_gc(), 0, m.get_storage(), make_lv(false, 0));
-        root -> template insert<&detail::no_merge_fn>(UInt64Prefix(0x0000'0000'0000'0002), m.get_gc(), 0, m.get_storage(), make_lv(false, 1));
-        root -> template insert<&detail::no_merge_fn>(UInt64Prefix(0x0000'0000'0000'0010), m.get_gc(), 0, m.get_storage(), make_lv(false, 2));
-        root -> template insert<&detail::no_merge_fn>(UInt64Prefix(0x0000'0000'0000'0100), m.get_gc(), 0, m.get_storage(), make_lv(false, 3));
-        root -> template insert<&detail::no_merge_fn>(UInt64Prefix(0x0000'0000'0000'1000), m.get_gc(), 0, m.get_storage(), make_lv(false, 4));
+        root -> template insert<&detail::no_merge_fn>(UInt64Prefix(0x0000'0000'0000'0001), m.get_gc(), 1, m.get_storage(), make_lv(false, 0));
+        root -> template insert<&detail::no_merge_fn>(UInt64Prefix(0x0000'0000'0000'0002), m.get_gc(), 1, m.get_storage(), make_lv(false, 1));
+        root -> template insert<&detail::no_merge_fn>(UInt64Prefix(0x0000'0000'0000'0010), m.get_gc(), 1, m.get_storage(), make_lv(false, 2));
+        root -> template insert<&detail::no_merge_fn>(UInt64Prefix(0x0000'0000'0000'0100), m.get_gc(), 1, m.get_storage(), make_lv(false, 3));
+        root -> template insert<&detail::no_merge_fn>(UInt64Prefix(0x0000'0000'0000'1000), m.get_gc(), 1, m.get_storage(), make_lv(false, 4));
 
-        REQUIRE(m.hash_and_normalize(0) == h);
+        REQUIRE(m.hash_and_normalize(1) == h);
 
         //nodes should not even exist in the tree
-        root -> template insert<&detail::no_merge_fn>(UInt64Prefix(0x0000'0000'0000'0001), m.get_gc(), 0, m.get_storage(), make_lv(false, 0));
+        root -> template insert<&detail::no_merge_fn>(UInt64Prefix(0x0000'0000'0000'0001), m.get_gc(), 1, m.get_storage(), make_lv(false, 0));
     }
 
     SECTION("some values")
     {
-        auto root = m.get_root_and_invalidate_hash(0);
+        auto root = m.get_root_and_invalidate_hash(1);
 
         mt m2(0), m3(0);
 
-        auto root2 = m2.get_root_and_invalidate_hash(0);
-        auto root3 = m3.get_root_and_invalidate_hash(0);
+        auto root2 = m2.get_root_and_invalidate_hash(1);
+        auto root3 = m3.get_root_and_invalidate_hash(1);
 
-        root -> template insert<&detail::no_merge_fn>(UInt64Prefix(0x0000'0000'0000'0001), m.get_gc(), 0, m.get_storage(), make_lv(true, 0));
-        root2 -> template insert<&detail::no_merge_fn>(UInt64Prefix(0x0000'0000'0000'0001), m2.get_gc(), 0, m.get_storage(), make_lv(true, 0));
+        root -> template insert<&detail::no_merge_fn>(UInt64Prefix(0x0000'0000'0000'0001), m.get_gc(), 1, m.get_storage(), make_lv(true, 0));
+        root2 -> template insert<&detail::no_merge_fn>(UInt64Prefix(0x0000'0000'0000'0001), m2.get_gc(), 1, m.get_storage(), make_lv(true, 0));
 
-        root -> template insert<&detail::no_merge_fn>(UInt64Prefix(0x0000'0000'0000'0002), m.get_gc(), 0, m.get_storage(), make_lv(false, 1));
-        root -> template insert<&detail::no_merge_fn>(UInt64Prefix(0x0000'0000'0000'0010), m.get_gc(), 0, m.get_storage(), make_lv(false, 2));
-        root -> template insert<&detail::no_merge_fn>(UInt64Prefix(0x0000'0000'0000'0100), m.get_gc(), 0, m.get_storage(), make_lv(false, 3));
+        root -> template insert<&detail::no_merge_fn>(UInt64Prefix(0x0000'0000'0000'0002), m.get_gc(), 1, m.get_storage(), make_lv(false, 1));
+        root -> template insert<&detail::no_merge_fn>(UInt64Prefix(0x0000'0000'0000'0010), m.get_gc(), 1, m.get_storage(), make_lv(false, 2));
+        root -> template insert<&detail::no_merge_fn>(UInt64Prefix(0x0000'0000'0000'0100), m.get_gc(), 1, m.get_storage(), make_lv(false, 3));
 
-        root -> template insert<&detail::no_merge_fn>(UInt64Prefix(0x0000'0000'0000'1000), m.get_gc(), 0, m.get_storage(), make_lv(true, 4));
-        root2 -> template insert<&detail::no_merge_fn>(UInt64Prefix(0x0000'0000'0000'1000), m2.get_gc(), 0, m2.get_storage(), make_lv(true, 4));
-        root3 -> template insert<&detail::no_merge_fn>(UInt64Prefix(0x0000'0000'0000'1000), m3.get_gc(), 0, m3.get_storage(), make_lv(true, 4));
+        root -> template insert<&detail::no_merge_fn>(UInt64Prefix(0x0000'0000'0000'1000), m.get_gc(), 1, m.get_storage(), make_lv(true, 4));
+        root2 -> template insert<&detail::no_merge_fn>(UInt64Prefix(0x0000'0000'0000'1000), m2.get_gc(), 1, m2.get_storage(), make_lv(true, 4));
+        root3 -> template insert<&detail::no_merge_fn>(UInt64Prefix(0x0000'0000'0000'1000), m3.get_gc(), 1, m3.get_storage(), make_lv(true, 4));
 
-        REQUIRE(m.hash_and_normalize(0) == m2.hash_and_normalize(0));
+        REQUIRE(m.hash_and_normalize(1) == m2.hash_and_normalize(1));
 
         auto* n1 = m.get_subnode_ref_and_invalidate_hash(UInt64Prefix(0x0000'0000'0000'0001),
-                                              PrefixLenBits(64), 0);
+                                              PrefixLenBits(64), 2);
 
         auto* v = n1->get_value(UInt64Prefix(0x0000'0000'0000'0001), m.get_storage(), false);
         REQUIRE(!!v);
         v -> valid = false;
 
-        REQUIRE(m.hash_and_normalize(0) == m3.hash_and_normalize(0));
+        REQUIRE(m.hash_and_normalize(2) == m3.hash_and_normalize(2));
 
-        REQUIRE(m2.hash_and_normalize(0) != m3.hash_and_normalize(0));
+        REQUIRE(m2.hash_and_normalize(2) != m3.hash_and_normalize(2));
     }
 
     SECTION("get value queries")

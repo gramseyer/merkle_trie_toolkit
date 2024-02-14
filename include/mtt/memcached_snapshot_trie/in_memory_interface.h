@@ -27,6 +27,13 @@ class InMemoryInterface
     mutable uint32_t loads = 0;
 
   public:
+    InMemoryInterface()
+        : mtx()
+        , values()
+        , stores(0)
+        , loads(0)
+        {}
+
     constexpr static uint8_t KEY_LEN_BYTES = _KEY_LEN_BYTES;
 
     using result_t = DurableResult<KEY_LEN_BYTES, std::vector<uint8_t>>;
@@ -35,9 +42,6 @@ class InMemoryInterface
                            DurableValue<KEY_LEN_BYTES> const& value)
     {
         std::lock_guard lock(mtx);
-
-        // std::printf("logging key %p %lu value=%s\n", key.ptr, key.timestamp,
-        // utils::array_to_str(value.get_buffer()).c_str());
 
         if (values.find(key) != values.end()) {
             throw std::runtime_error("cannot reinsert preexisting key");

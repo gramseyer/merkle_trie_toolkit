@@ -11,6 +11,7 @@
 
 #include <array>
 #include <atomic>
+#include <cstddef>
 #include <cstdint>
 #include <utility>
 
@@ -504,10 +505,17 @@ load_evicted_ptr(TimestampPointerPair const& storage_ptr,
 
         node_t* out = new node_t(prefix_t(result.get_key().ptr, slice_ctor_t{}),
                                  storage_ptr.timestamp,
-                                 value_header.previous,
+                                 value_header.internal.previous,
                                  value_slice);
 
-        out->set_metadata(value_header.metadata, value_header.hash);
+        if constexpr (DurableValueHeader<metadata_t>::meta_flag)
+        {
+            out->set_metadata(value_header.internal.metadata, value_header.internal.hash);
+        } else 
+        {
+            out->set_metadata(metadata_t{}, value_header.internal.hash);
+        }
+
         return out;
     }
 
@@ -534,17 +542,24 @@ load_evicted_ptr(TimestampPointerPair const& storage_ptr,
         auto res_child
             = storage.restore_durable_value(map_node.children[counter]);
 
-        auto get_meta = [&res_child]() -> const metadata_t& {
-            if (res_child.is_value()) {
-                return res_child.template get_value<metadata_t>().metadata;
-            }
+        auto get_meta = [&res_child]() -> metadata_t {
             utils::print_assert(!res_child.is_delete(), "invalid load");
-            return res_child.template get_map<metadata_t>().internal.metadata;
+            static_assert(DurableMapNode<metadata_t>::meta_flag == DurableValueHeader<metadata_t>::meta_flag, "type mismatch!?");
+
+            if constexpr (!DurableMapNode<metadata_t>::meta_flag)
+            {
+                return metadata_t{};
+            } else {
+                if (res_child.is_value()) {
+                    return res_child.template get_value<metadata_t>().metadata;
+                }
+                return res_child.template get_map<metadata_t>().internal.metadata;
+            }
         };
 
          auto get_hash = [&res_child]() -> const Hash& {
             if (res_child.is_value()) {
-                return res_child.template get_value<metadata_t>().hash;
+                return res_child.template get_value<metadata_t>().internal.hash;
             }
             utils::print_assert(!res_child.is_delete(), "invalid load");
             return res_child.template get_map<metadata_t>().internal.hash;
@@ -1049,8 +1064,7 @@ MCTN_DECL::log_self_active(DurableInterface auto& interface)
     auto cur_ts = get_ts_ptr();
     auto prev_ts = get_previous_ts_ptr();
 
-    trie_assert(cur_ts != prev_ts, "don't want to accidentally overrwrite db");
-
+    trie_assert(cur_ts != prev_ts, "don't want to accidentally overwrite db");
 
     if (is_leaf() && std::get<variant_value_t>(body).has_logical_value()) {
         // if not has_value, self is not active, so node will be deleted in a
@@ -1075,11 +1089,12 @@ MCTN_DECL::log_self_active(DurableInterface auto& interface)
 
     DurableMapNode<metadata_t> m;
 
-    m.internal.metadata = metadata;
+    m.set_meta(metadata);//internal.metadata = metadata;
     m.internal.hash = hash;
     m.internal.key_len_bits = prefix_len.len;
     m.internal.previous = prev_ts;
     TrieBitVector bv;
+
     uint8_t sz = 0;
 
     for (uint8_t bb = 0; bb < 16; bb++) {
