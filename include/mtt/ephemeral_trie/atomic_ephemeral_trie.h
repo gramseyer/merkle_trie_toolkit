@@ -20,6 +20,7 @@
 #include "mtt/ephemeral_trie/concepts.h"
 
 #include <utils/non_movable.h>
+#include <utils/compat.h>
 
 #include <sodium.h>
 
@@ -640,7 +641,8 @@ ATN_DECL :: insert(prefix_t const& new_prefix,
                 }
             }
         }
-        __builtin_ia32_pause();
+	SPINLOCK_PAUSE();
+        //__builtin_ia32_pause();
     }
 }
 
@@ -664,7 +666,8 @@ ATN_DECL :: bump_size(prefix_t const& bump_prefix,
             child.bump_size(bump_prefix, allocator);
             return;
         }
-        __builtin_ia32_pause();
+	SPINLOCK_PAUSE();
+        //__builtin_ia32_pause();
     }
 }
 

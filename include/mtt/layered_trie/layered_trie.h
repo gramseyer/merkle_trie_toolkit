@@ -17,6 +17,7 @@
 
 #include <utils/threadlocal_cache.h>
 #include <utils/assert.h>
+#include <utils/compat.h>
 
 #include <sodium.h>
 
@@ -903,7 +904,8 @@ LTN_DECL::insert(
 				delete new_node;
 			}
 		}
-		__builtin_ia32_pause();
+		SPINLOCK_PAUSE();
+		//__builtin_ia32_pause();
 	}
 }
 
