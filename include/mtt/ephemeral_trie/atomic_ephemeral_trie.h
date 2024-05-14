@@ -48,7 +48,7 @@ class AtomicChildrenMap : private utils::NonMovableOrCopyable
     std::array<std::atomic<uint64_t>, 16> children;
 
   public:
-    AtomicChildrenMap() { clear(); }
+    AtomicChildrenMap() { clear(false); }
 
     bool try_set(uint8_t bb, uint64_t& expected, uint64_t desired)
     {
@@ -65,9 +65,11 @@ class AtomicChildrenMap : private utils::NonMovableOrCopyable
         return children[bb].load(std::memory_order_acquire);
     }
 
-    void clear()
+    void clear(bool yield)
     {
-        ephemeraltrie_yield();
+        if (yield) {
+            ephemeraltrie_yield();
+        }
         for (uint8_t i = 0; i < 16; i++) {
             children[i].store(0xFFFF'FFFF'0000'0000, std::memory_order_release);
         }
@@ -76,8 +78,8 @@ class AtomicChildrenMap : private utils::NonMovableOrCopyable
     void set_unique_child(uint8_t single_child_branch_bits,
                           uint64_t single_child_ptr)
     {
-        clear();
         ephemeraltrie_yield();
+        clear(true);
         children[single_child_branch_bits].store(single_child_ptr,
                                                  std::memory_order_release);
     }
@@ -196,7 +198,7 @@ class alignas(64) AtomicTrieNode : private utils::NonMovableOrCopyable
         prefix.clear();
         prefix_len = PrefixLenBits{ 0 };
 
-        children.clear();
+        children.clear(true);
 
         metadata.clear();
     }
