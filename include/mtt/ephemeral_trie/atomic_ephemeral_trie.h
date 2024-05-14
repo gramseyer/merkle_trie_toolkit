@@ -26,7 +26,17 @@
 
 #include <tbb/parallel_for.h>
 
+#include "libptimc.h"
+#include "config/yield_config.h"
+
 namespace trie {
+
+void ephemeraltrie_yield() {
+    if (scs::yield_config.EPHEMERALTRIE_YIELD)
+    {
+        imcthread_yield();
+    }
+}
 
 /**
  * IMPORTANT WARNING:
@@ -42,6 +52,7 @@ class AtomicChildrenMap : private utils::NonMovableOrCopyable
 
     bool try_set(uint8_t bb, uint64_t& expected, uint64_t desired)
     {
+        ephemeraltrie_yield();
         bool res = children[bb].compare_exchange_weak(
             expected, desired, std::memory_order_acq_rel);
 
@@ -50,11 +61,13 @@ class AtomicChildrenMap : private utils::NonMovableOrCopyable
 
     uint64_t get(uint8_t bb) const
     {
+        ephemeraltrie_yield();
         return children[bb].load(std::memory_order_acquire);
     }
 
     void clear()
     {
+        ephemeraltrie_yield();
         for (uint8_t i = 0; i < 16; i++) {
             children[i].store(0xFFFF'FFFF'0000'0000, std::memory_order_release);
         }
@@ -64,6 +77,7 @@ class AtomicChildrenMap : private utils::NonMovableOrCopyable
                           uint64_t single_child_ptr)
     {
         clear();
+        ephemeraltrie_yield();
         children[single_child_branch_bits].store(single_child_ptr,
                                                  std::memory_order_release);
     }
@@ -402,6 +416,7 @@ class AtomicTrie
 
         if (root.template insert<InsertFn, InsertedValueType>(
                 new_prefix, std::move(value), allocator_context)) {
+            ephemeraltrie_yield();
             root.bump_size(new_prefix, allocator_context);
             return true;
         }
