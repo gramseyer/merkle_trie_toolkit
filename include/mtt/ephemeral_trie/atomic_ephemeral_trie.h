@@ -79,17 +79,17 @@ class AtomicChildrenMap : private utils::NonMovableOrCopyable
     }
 };
 
-template<typename ValueType, typename PrefixT, EphemeralTrieMetadata metadata_t, uint8_t LOG_BUFSIZE>
+template<typename ValueType, typename PrefixT, EphemeralTrieMetadata metadata_t, uint8_t LOG_BUFSIZE, uint8_t LOG_NUM_BUFFERS>
 class AtomicTrie;
 
-template<typename ValueType, typename PrefixT, uint8_t LOG_BUFSIZE, EphemeralTrieMetadata metadata_t>
+template<typename ValueType, typename PrefixT, uint8_t LOG_BUFSIZE, uint8_t LOG_NUM_BUFFERS, EphemeralTrieMetadata metadata_t>
 class alignas(64) AtomicTrieNode : private utils::NonMovableOrCopyable
 {
 
   public:
     using prefix_t = PrefixT;
-    using node_t = AtomicTrieNode<ValueType, prefix_t, LOG_BUFSIZE, metadata_t>;
-    using allocator_t = EphemeralTrieNodeAllocator<node_t, ValueType, LOG_BUFSIZE>;
+    using node_t = AtomicTrieNode<ValueType, prefix_t, LOG_BUFSIZE, LOG_NUM_BUFFERS, metadata_t>;
+    using allocator_t = EphemeralTrieNodeAllocator<node_t, ValueType, LOG_BUFSIZE, LOG_NUM_BUFFERS>;
     using allocation_context_t = typename allocator_t::context_t;
     using value_t = ValueType;
     using ptr_t = uint32_t;
@@ -331,13 +331,18 @@ class alignas(64) AtomicTrieNode : private utils::NonMovableOrCopyable
     TrieProof<prefix_t> make_proof(prefix_t const& query_prefix, PrefixLenBits const& query_len, allocator_t const& allocator) const;
 };
 
-template<typename ValueType, typename PrefixT, EphemeralTrieMetadata metadata_t = EphemeralTrieMetadataBase, uint8_t LOG_BUFSIZE = 19>
+template<
+    typename ValueType, 
+    typename PrefixT, 
+    EphemeralTrieMetadata metadata_t = EphemeralTrieMetadataBase, 
+    uint8_t LOG_BUFSIZE = 19, 
+    uint8_t LOG_NUM_BUFFERS = 32 - LOG_BUFSIZE>
 class AtomicTrie
 {
   public:
     using prefix_t = PrefixT;
-    using node_t = AtomicTrieNode<ValueType, prefix_t, LOG_BUFSIZE, metadata_t>;
-    using allocator_t = typename node_t::allocator_t;//EphemeralTrieNodeAllocator<node_t, LOG_BUFSIZE>;
+    using node_t = AtomicTrieNode<ValueType, prefix_t, LOG_BUFSIZE, LOG_NUM_BUFFERS, metadata_t>;
+    using allocator_t = typename node_t::allocator_t;
     using allocation_context_t = typename allocator_t::context_t;
     using value_t = ValueType;
 
@@ -544,8 +549,8 @@ public:
     }
 };
 
-#define ATN_TEMPLATE template<typename ValueType, typename PrefixT, uint8_t LOG_BUFSIZE, EphemeralTrieMetadata metadata_t>
-#define ATN_DECL AtomicTrieNode<ValueType, PrefixT, LOG_BUFSIZE, metadata_t>
+#define ATN_TEMPLATE template<typename ValueType, typename PrefixT, uint8_t LOG_BUFSIZE, uint8_t LOG_NUM_BUFFERS, EphemeralTrieMetadata metadata_t>
+#define ATN_DECL AtomicTrieNode<ValueType, PrefixT, LOG_BUFSIZE, LOG_NUM_BUFFERS, metadata_t>
 
 ATN_TEMPLATE
 template<typename InsertFn, typename InsertedValue>
@@ -928,9 +933,9 @@ ATN_DECL::make_proof(prefix_t const& query, PrefixLenBits const& query_len, allo
 #undef ATN_DECL
 #undef ATN_TEMPLATE
 
-template<typename ValueType, typename PrefixT, EphemeralTrieMetadata metadata_t, uint8_t LOG_BUFSIZE>
+template<typename ValueType, typename PrefixT, EphemeralTrieMetadata metadata_t, uint8_t LOG_BUFSIZE, uint8_t LOG_NUM_BUFFERS>
 bool
-AtomicTrie<ValueType, PrefixT, metadata_t, LOG_BUFSIZE>::verify_proof(const TrieProof<PrefixT>& proof, const Hash& root_hash)
+AtomicTrie<ValueType, PrefixT, metadata_t, LOG_BUFSIZE, LOG_NUM_BUFFERS>::verify_proof(const TrieProof<PrefixT>& proof, const Hash& root_hash)
 {
     std::optional<metadata_t> carried_meta;
     std::optional<PrefixLenBits> carried_len;

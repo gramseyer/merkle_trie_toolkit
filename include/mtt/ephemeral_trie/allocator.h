@@ -6,11 +6,9 @@
 
 namespace trie {
 
-template<uint8_t OFFSET_BITS>
+template<uint8_t OFFSET_BITS, uint8_t BUFFER_ID_BITS>
 struct EphemeralTrieNodeAllocatorConstants
 {
-    constexpr static uint8_t BUFFER_ID_BITS = 32 - OFFSET_BITS;
-
     // 2^19 = 524'288
     constexpr static size_t BUF_SIZE = static_cast<uint32_t>(1) << OFFSET_BITS;
 
@@ -19,12 +17,12 @@ struct EphemeralTrieNodeAllocatorConstants
     constexpr static uint32_t OFFSET_MASK
         = (static_cast<uint32_t>(1) << (OFFSET_BITS)) - 1;
 
-    static_assert(BUFFER_ID_BITS + OFFSET_BITS == 32, "ptrs are size 32 bits");
+    static_assert(BUFFER_ID_BITS + OFFSET_BITS <= 32, "ptrs are size 32 bits");
 
     EphemeralTrieNodeAllocatorConstants() = delete;
 };
 
-template<typename ObjType, typename ValueType, uint8_t LOG_BUFSIZE>
+template<typename ObjType, typename ValueType, uint8_t LOG_BUFSIZE, uint8_t LOG_NUM_BUFFERS>
 struct EphemeralTrieNodeAllocator;
 
 /*! Singlethreaded node/value allocator.
@@ -32,24 +30,22 @@ When it runs out, it asks the main node allocator for another working buffer.
 Allocations are never recycled, until the main node allocator is cleared
 (after which a context should not be used until reset)
 */
-template<typename ObjType, typename ValueType, uint8_t LOG_BUFSIZE>
+template<typename ObjType, typename ValueType, uint8_t LOG_BUFSIZE, uint8_t LOG_NUM_BUFFERS>
 class EphemeralTrieNodeAllocationContext : private utils::NonMovableOrCopyable
 {
     uint32_t cur_buffer_offset_and_index = UINT32_MAX;
     uint32_t value_buffer_offset_and_index = UINT32_MAX;
 
-    using allocator_t = EphemeralTrieNodeAllocator<ObjType, ValueType, LOG_BUFSIZE>;
+    using allocator_t = EphemeralTrieNodeAllocator<ObjType, ValueType, LOG_BUFSIZE, LOG_NUM_BUFFERS>;
 
     allocator_t& allocator;
 
     constexpr static size_t BUF_SIZE
-        = EphemeralTrieNodeAllocatorConstants<LOG_BUFSIZE>::BUF_SIZE;
-   // constexpr static uint8_t OFFSET_BITS
-     //   = EphemeralTrieNodeAllocatorConstants<LOG_BUFSIZE>::OFFSET_BITS;
+        = EphemeralTrieNodeAllocatorConstants<LOG_BUFSIZE, LOG_NUM_BUFFERS>::BUF_SIZE;
     constexpr static uint32_t OFFSET_MASK
-        = EphemeralTrieNodeAllocatorConstants<LOG_BUFSIZE>::OFFSET_MASK;
+        = EphemeralTrieNodeAllocatorConstants<LOG_BUFSIZE, LOG_NUM_BUFFERS>::OFFSET_MASK;
 
-    using value_t = ValueType;//typename allocator_t::value_t;
+    using value_t = ValueType;
 
     static bool overflow_check(uint32_t offset_and_index, uint8_t new_allocs)
     {
@@ -126,15 +122,13 @@ After resetting, created contexts should be nullified.
 
 This struct is threadsafe.
 */
-template<typename ObjType, typename ValueType, uint8_t LOG_BUFSIZE>
+template<typename ObjType, typename ValueType, uint8_t LOG_BUFSIZE, uint8_t LOG_NUM_BUFFERS>
 struct EphemeralTrieNodeAllocator : private utils::NonMovableOrCopyable
 {
     constexpr static size_t BUF_SIZE
-        = EphemeralTrieNodeAllocatorConstants<LOG_BUFSIZE>::BUF_SIZE;
-    //constexpr static uint8_t OFFSET_BITS
-    //    = EphemeralTrieNodeAllocatorConstants<LOG_BUFSIZE>::OFFSET_BITS;
+        = EphemeralTrieNodeAllocatorConstants<LOG_BUFSIZE, LOG_NUM_BUFFERS>::BUF_SIZE;
     constexpr static uint32_t OFFSET_MASK
-        = EphemeralTrieNodeAllocatorConstants<LOG_BUFSIZE>::OFFSET_MASK;
+        = EphemeralTrieNodeAllocatorConstants<LOG_BUFSIZE, LOG_NUM_BUFFERS>::OFFSET_MASK;
 
     using buffer_t = std::array<ObjType, BUF_SIZE>;
 
@@ -144,7 +138,7 @@ struct EphemeralTrieNodeAllocator : private utils::NonMovableOrCopyable
 
     using value_buffer_t = std::array<value_t, BUF_SIZE>;
 
-    using context_t = EphemeralTrieNodeAllocationContext<ObjType, value_t, LOG_BUFSIZE>;
+    using context_t = EphemeralTrieNodeAllocationContext<ObjType, value_t, LOG_BUFSIZE, LOG_NUM_BUFFERS>;
 
   private:
     std::atomic<uint32_t> next_available_buffer = 0;
@@ -152,11 +146,11 @@ struct EphemeralTrieNodeAllocator : private utils::NonMovableOrCopyable
 
     using buffer_ptr_t = std::unique_ptr<buffer_t>;
 
-    std::array<buffer_ptr_t, EphemeralTrieNodeAllocatorConstants<LOG_BUFSIZE>::NUM_BUFFERS> buffers;
+    std::array<buffer_ptr_t, EphemeralTrieNodeAllocatorConstants<LOG_BUFSIZE, LOG_NUM_BUFFERS>::NUM_BUFFERS> buffers;
 
     using value_buffer_ptr_t = std::unique_ptr<value_buffer_t>;
 
-    std::array<value_buffer_ptr_t, EphemeralTrieNodeAllocatorConstants<LOG_BUFSIZE>::NUM_BUFFERS> value_buffers;
+    std::array<value_buffer_ptr_t, EphemeralTrieNodeAllocatorConstants<LOG_BUFSIZE, LOG_NUM_BUFFERS>::NUM_BUFFERS> value_buffers;
 
   public:
     //! Get a new allocation context
