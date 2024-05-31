@@ -119,34 +119,14 @@ class alignas(64) AtomicTrieNode : private utils::NonMovableOrCopyable
     template<typename InsertFn, typename InsertedValueType>
     void set_as_new_value_leaf(
         const prefix_t& key,
-        typename std::enable_if<
-            !std::is_same<ValueType, InsertedValueType>::value,
-            InsertedValueType&&>::type value,
+        InsertedValueType&& value,
         allocation_context_t& allocator)
     {
         // no need to clear children
         value_pointer = allocator.allocate_value();
         auto& new_value = allocator.get_value(value_pointer);
-        new_value = InsertFn::new_value(key);
+        InsertFn::reset_value(new_value, key);
         InsertFn::value_insert(new_value, std::move(value));
-
-        prefix = key;
-        prefix_len = MAX_KEY_LEN_BITS;
-
-        metadata.clear();
-    }
-
-    template<typename InsertFn, typename InsertedValueType>
-    void set_as_new_value_leaf(
-        const prefix_t& key,
-        typename std::enable_if<
-            std::is_same<ValueType, InsertedValueType>::value,
-            InsertedValueType&&>::type value,
-        allocation_context_t& allocator)
-    {
-        // no need to clear children
-        value_pointer = allocator.allocate_value();
-        allocator.get_value(value_pointer) = std::move(value);
 
         prefix = key;
         prefix_len = MAX_KEY_LEN_BITS;
@@ -294,7 +274,7 @@ class alignas(64) AtomicTrieNode : private utils::NonMovableOrCopyable
                                             size_t vector_offset,
                                             const allocator_t& allocator) const;
 
-    const value_t* get_value(const prefix_t& query_prefix, allocator_t const& allocator) const;
+    value_t* get_value(const prefix_t& query_prefix, allocator_t const& allocator);
 
     // TESTING
     uint32_t deep_sizecheck(allocator_t const& allocator) const
@@ -365,6 +345,9 @@ class AtomicTrie
     using applyable_ref = ApplyableNodeReference<allocator_t>;
 
   private:
+
+    using self_t = AtomicTrie<ValueType, PrefixT, metadata_t, LOG_BUFSIZE>;
+
     allocator_t allocator;
 
     node_t root;
@@ -508,9 +491,14 @@ class AtomicTrie
 
     uint32_t deep_sizecheck() const { return root.deep_sizecheck(allocator); }
 
-    const value_t* get_value(const prefix_t& query_prefix) const
+    value_t* get_value(const prefix_t& query_prefix)
     {
         return root.get_value(query_prefix, allocator);
+    }
+
+    const value_t* get_value(const prefix_t& query_prefix) const {
+        return const_cast<const value_t*>(
+            const_cast<self_t*>(this)->get_value(query_prefix));
     }
 
     const_applyable_ref get_applyable_ref() const {
@@ -824,10 +812,9 @@ ATN_DECL :: compute_hash(allocator_t& allocator, std::vector<uint8_t>& digest_bu
     metadata.hash_valid = true;
 }
 
-ATN_TEMPLATE
-const 
+ATN_TEMPLATE 
 typename ATN_DECL::value_t*
-ATN_DECL::get_value(const prefix_t& query_prefix, allocator_t const& allocator) const
+ATN_DECL::get_value(const prefix_t& query_prefix, allocator_t const& allocator)
 {
     auto match_len = get_prefix_match_len(query_prefix);
     if (match_len < prefix_len) {

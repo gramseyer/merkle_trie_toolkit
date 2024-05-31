@@ -17,6 +17,12 @@ struct GenericInsertFn {
 	static MetadataType new_metadata(const ValueType& value) {
 		return MetadataType(value);
 	}
+
+	template<typename prefix_t>
+	static void reset_value(ValueType& v, const prefix_t& prefix)
+	{
+		v = new_value(prefix);
+	}
 };
 
 //! Overwrite previous value when inserting new value into a trie.
