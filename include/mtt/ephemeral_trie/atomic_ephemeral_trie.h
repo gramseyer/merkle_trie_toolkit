@@ -110,9 +110,6 @@ class alignas(64) AtomicTrieNode : private utils::NonMovableOrCopyable
 
     metadata_t metadata;
 
-    //bool hash_valid = false;
-    //Hash hash;
-
   public:
     // constructors
 
@@ -329,6 +326,8 @@ class alignas(64) AtomicTrieNode : private utils::NonMovableOrCopyable
     }
 
     TrieProof<prefix_t> make_proof(prefix_t const& query_prefix, PrefixLenBits const& query_len, allocator_t const& allocator) const;
+    
+    const node_t* get_child(uint8_t bb, const allocator_t& allocator) const;
 };
 
 template<
@@ -634,7 +633,7 @@ ATN_DECL :: insert(prefix_t const& new_prefix,
                 }
             }
         }
-	SPINLOCK_PAUSE();
+	   SPINLOCK_PAUSE();
         //__builtin_ia32_pause();
     }
 }
@@ -842,6 +841,20 @@ ATN_DECL::get_value(const prefix_t& query_prefix, allocator_t const& allocator)
     }
 
     return allocator.get_object(relevant_child).get_value(query_prefix, allocator);
+}
+
+ATN_TEMPLATE
+const typename ATN_DECL::node_t*
+ATN_DECL::get_child(uint8_t bb, allocator_t const& allocator) const
+{
+    if (prefix_len == MAX_KEY_LEN_BITS) {
+        throw std::runtime_error("invalid access");
+    }
+    uint32_t ptr = children.get(bb) >> 32;
+    if (ptr == UINT32_MAX) {
+        return nullptr;
+    }
+    return children.get(ptr);
 }
 
 ATN_TEMPLATE
