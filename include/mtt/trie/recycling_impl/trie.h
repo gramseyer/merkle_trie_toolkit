@@ -77,7 +77,7 @@ class alignas(64) RecyclingTrieNode : private utils::NonMovableOrCopyable
     using children_map_t = RecyclingChildrenMap<ValueType, node_t>;
     using ptr_t = typename children_map_t::ptr_t;
     using hash_t = Hash;
-    using allocator_t = EphemeralTrieNodeAllocator<node_t, ValueType, 19>;
+    using allocator_t = EphemeralTrieNodeAllocator<node_t, ValueType, 19, 13>;
     using allocation_context_t = typename allocator_t::context_t;// EphemeralTrieNodeAllocationContext<node_t, 19>; //
     using metadata_t = RecyclingTrieNodeMetadata<ExtraMetadata>;
     using contents_t = TrieNodeContents<ValueType, node_t, metadata_t>;
