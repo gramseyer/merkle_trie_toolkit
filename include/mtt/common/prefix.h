@@ -316,6 +316,17 @@ public:
 		return out;
 	}
 
+	template<typename array_t = std::array<uint8_t, MAX_LEN_BYTES>>
+	void
+	write_bytes_to(array_t& array) const
+	{
+		constexpr uint8_t bytes_to_write = std::min<std::size_t>(array.size(), MAX_LEN_BYTES);
+		const uint8_t* ptr 
+			= reinterpret_cast<const uint8_t*>(data.data());
+
+		std::memcpy(array.data(), ptr, bytes_to_write);
+	}
+
 	void write_bytes_to(std::vector<uint8_t>& out, PrefixLenBits const& prefix_len) const
 	{
 		const uint8_t bytes_to_write = prefix_len.num_prefix_bytes();

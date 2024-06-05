@@ -154,6 +154,20 @@ class alignas(64) AtomicTrieNode : private utils::NonMovableOrCopyable
         metadata.clear();
     }
 
+    value_t& get_value_self(allocator_t& allocator) {
+        if (value_pointer == UINT32_MAX) {
+            throw std::runtime_error("invalid value access");
+        }
+        return allocator.get_value(value_pointer);
+    }
+
+    const value_t& get_value_self(allocator_t const& allocator) const {
+        if (value_pointer == UINT32_MAX) {
+            throw std::runtime_error("invalid value access");
+        }
+        return allocator.get_value(value_pointer);
+    }
+
     void set_as_empty_node()
     {
         prefix.clear();
@@ -214,6 +228,11 @@ class alignas(64) AtomicTrieNode : private utils::NonMovableOrCopyable
     uint32_t size() const;
 
     void append_metadata(std::vector<uint8_t>& digest_buffer, metadata_t& acc) const;
+
+    const metadata_t& get_metadata() const {
+        return metadata;
+    }
+
     void compute_hash(allocator_t& allocator, std::vector<uint8_t>& digest_buffer);
 
     Hash get_hash() const {
@@ -348,13 +367,15 @@ class AtomicTrie
     using const_applyable_ref = ConstApplyableNodeReference<allocator_t>;
     using applyable_ref = ApplyableNodeReference<allocator_t>;
 
-  private:
+  protected:
 
     using self_t = AtomicTrie<ValueType, PrefixT, metadata_t, LOG_BUFSIZE>;
 
     allocator_t allocator;
 
     node_t root;
+
+  private:
 
     bool hashed = false;
 
@@ -854,7 +875,7 @@ ATN_DECL::get_child(uint8_t bb, allocator_t const& allocator) const
     if (ptr == UINT32_MAX) {
         return nullptr;
     }
-    return children.get(ptr);
+    return &allocator.get_object(ptr);
 }
 
 ATN_TEMPLATE
