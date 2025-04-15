@@ -358,7 +358,7 @@ class AtomicMerkleTrie
                                                 const PrefixLenBits query_len)
     {
         static_assert(query_prefix_t::len() >= prefix_t::len(), "can't query for shorter prefix");
-        auto* out = root->template get_or_make_subnode_ref(
+        auto* out = root->get_or_make_subnode_ref(
             query_prefix, std::min(prefix_t::len(), query_len), gc);
         root->invalidate_hash_to_node(out);
         return out;

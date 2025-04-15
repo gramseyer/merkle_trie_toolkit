@@ -422,7 +422,7 @@ class MemcacheTrie
                                                 const PrefixLenBits query_len,
                                                 uint32_t current_timestamp)
     {
-        return root->template get_or_make_subnode_ref(
+        return root->get_or_make_subnode_ref(
             query_prefix, query_len, current_timestamp);
     }
 
